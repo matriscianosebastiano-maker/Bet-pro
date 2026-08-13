@@ -1,8 +1,17 @@
 from datetime import datetime
 
 oggi = datetime.now().strftime("%d/%m/%Y")
-ora = datetime.now().strftime("%H:%M")
 
+# Database temporaneo per il test dell'infrastruttura
+eventi = [
+    { "sport": "Calcio", "match": "Omonia Nicosia vs Lincoln Red Imps", "quota": "1.42", "esito": "1X + Under 3.5", "descrizione": "Controllo casa protetto da limite massimo di reti" },
+    { "sport": "Tennis", "match": "Sinner vs Avversario", "quota": "1.65", "esito": "Handicap -3.5 (Sinner)", "descrizione": "Margine di superiorità stimato sui turni di battuta" },
+    { "sport": "Basket", "match": "Real Madrid vs Barcellona", "quota": "1.50", "esito": "1 Testa a Testa (Incl. Supp.)", "descrizione": "Fattore campo pesante e storico scontri diretti" },
+    { "sport": "Volley", "match": "Italia vs Polonia", "quota": "1.48", "esito": "Over 3.5 Set", "descrizione": "Equilibrio tecnico elevato tra le due formazioni" },
+    { "sport": "Formula 1", "match": "Testa a Testa Piloti", "quota": "1.55", "esito": "Leclerc > Sainz", "descrizione": "Analisi passo gara e performance prove libere" }
+]
+
+# Struttura base dell'App (HTML + CSS)
 html_content = f"""<!DOCTYPE html>
 <html lang="it">
 <head>
@@ -88,17 +97,26 @@ html_content = f"""<!DOCTYPE html>
     </header>
 
     <div class="container">
-        <div class="card">
-            <div class="card-header"><span>Stato Cloud</span><span>Live Sync</span></div>
-            <div class="match-title">Sincronizzazione Automatica Attiva</div>
-            <div class="match-details">
-                <span class="market-tag">Aggiornato alle {ora}</span><br>
-                🎯 Il sistema in cloud è operativo e pronto per scaricare i palinsesti giornalieri.
-            </div>
-            <button class="btn" onclick="alert('Sistema operativo e sincronizzato!')">Verifica Stato</button>
-        </div>
-    </div>
+"""
 
+# Generazione dinamica delle schede per i match
+for m in eventi:
+    html_content += f"""
+        <div class="card">
+            <div class="card-header"><span>{m['sport']}</span><span>Live Check</span></div>
+            <div class="match-title">{m['match']}</div>
+            <div class="match-details">
+                <span class="market-tag">{m['esito']}</span><br>
+                📖 {m['descrizione']}<br>
+                🎯 Quota: <b>{m['quota']}</b>
+            </div>
+            <button class="btn" onclick="alert('✅ Schedina Singola Registrata!\\n\\nMatch: {m['match']}\\nQuota: {m['quota']}\\nImporto: 3.00€')">Punta Singola (3.00€)</button>
+        </div>
+    """
+
+# Chiusura della struttura HTML
+html_content += """
+    </div>
 </body>
 </html>
 """
@@ -106,4 +124,4 @@ html_content = f"""<!DOCTYPE html>
 with open("index.html", "w", encoding="utf-8") as f:
     f.write(html_content)
 
-print("index.html generato correttamente.")
+print("index.html generato correttamente per il test strutturale!")
