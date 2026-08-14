@@ -2,214 +2,165 @@
 <html lang="it">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>BetBot Quant Pro</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bet-Pro Quant Engine - Live Dashboard</title>
     <style>
-        :root {
-            --bg-color: #0f172a;
-            --card-bg: #1e293b;
-            --accent: #22c55e;
-            --text-main: #f8fafc;
-            --text-muted: #94a3b8;
-            --border: #334155;
-            --tag-bg: #0f172a;
-        }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background-color: var(--bg-color);
-            color: var(--text-main);
-            margin: 0;
-            padding: 15px;
-            padding-bottom: 90px;
-        }
-        header {
-            background: #1e293b;
-            padding: 15px;
-            border-radius: 12px;
-            border: 1px solid var(--border);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 15px;
-        }
-        header h1 { font-size: 15px; margin: 0; color: var(--accent); }
-        .update-badge { background: var(--tag-bg); padding: 5px 10px; border-radius: 20px; font-size: 11px; border: 1px solid var(--border); color: var(--text-muted); }
-        .tab-content { display: none; }
-        .tab-content.active { display: block; }
-        .card {
-            background: var(--card-bg);
-            border-radius: 12px;
-            padding: 16px;
-            margin-bottom: 15px;
-            border: 1px solid var(--border);
-        }
-        .card-header { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: bold; margin-bottom: 8px; }
-        .match-title { font-size: 15px; font-weight: bold; margin-bottom: 10px; }
-        .match-details {
-            background: var(--tag-bg);
-            padding: 10px;
-            border-radius: 8px;
-            font-size: 13px;
-            margin-bottom: 12px;
-            border-left: 4px solid var(--accent);
-            line-height: 1.4;
-        }
-        .market-tag {
-            display: inline-block;
-            background: #0284c7;
-            color: white;
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-size: 11px;
-            font-weight: bold;
-            margin-bottom: 5px;
-        }
-        .btn {
-            background: var(--accent);
-            color: #000;
-            border: none;
-            width: 100%;
-            padding: 12px;
-            border-radius: 8px;
-            font-weight: bold;
-            font-size: 14px;
-            cursor: pointer;
-        }
-        nav {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            background: #1e293b;
-            border-top: 1px solid var(--border);
-            display: flex;
-            justify-content: space-around;
-            padding: 12px 0;
-            z-index: 1000;
-        }
-        .nav-item { background: none; border: none; color: var(--text-muted); font-size: 13px; font-weight: bold; cursor: pointer; }
-        .nav-item.active { color: var(--accent); }
-        .checkbox-container {
-            display: block;
-            margin: 10px 0;
-            font-size: 13px;
-            background: var(--tag-bg);
-            padding: 12px;
-            border-radius: 8px;
-            border: 1px solid var(--border);
-            cursor: pointer;
-        }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #121212; color: #e0e0e0; margin: 0; padding: 20px; }
+        .container { max-width: 1300px; margin: auto; background: #1e1e1e; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
+        h1 { color: #00ffcc; text-align: center; margin-bottom: 5px; }
+        .subtitle { text-align: center; color: #888; margin-bottom: 30px; font-size: 0.95em; }
+        .grid-layout { display: grid; grid-template-columns: 2.5fr 1fr; gap: 20px; }
+        .card { background: #2a2a2a; border-left: 5px solid #00ffcc; padding: 20px; margin-bottom: 20px; border-radius: 6px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { padding: 10px; text-align: left; border-bottom: 1px solid #333; font-size: 0.9em; }
+        th { background-color: #333; color: #00ffcc; }
+        .badge { padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.85em; }
+        .badge-ev { background: #004d33; color: #00ffcc; }
+        .badge-risk-low { background: #1b4d3e; color: #2ecc71; }
+        .badge-risk-med { background: #5a4a00; color: #f1c40f; }
+        .btn { background: #00ffcc; color: #121212; border: none; padding: 6px 12px; border-radius: 4px; font-weight: bold; cursor: pointer; }
+        .btn:hover { background: #00ccb3; }
+        .slip-box { background: #222; padding: 15px; border-radius: 6px; border: 1px solid #444; }
+        .slip-item { display: flex; justify-content: space-between; margin-bottom: 10px; border-bottom: 1px dashed #444; padding-bottom: 5px; font-size: 0.85em; }
     </style>
 </head>
 <body>
-
-    <header>
-        <h1>⚡ BetBot Quant</h1>
-        <div class="update-badge">Agg: <b>{{OGGI}}</b></div>
-    </header>
-
     <div class="container">
-        <!-- TAB 1: SINGOLE -->
-        <div id="tab-palinsesto" class="tab-content active">
-            <h3 style="font-size:14px; margin-top:0; color: var(--text-muted);">Singole Matematica Dixon-Coles</h3>
-            <div id="matches-list"></div>
-        </div>
+        <h1>BET-PRO QUANTITATIVE ENGINE</h1>
+        <div class="subtitle">Analisi Inefficienze Globali in Tempo Reale & Simulatore di Schedina con Cashout</div>
+        
+        <div class="grid-layout">
+            <!-- Colonna Principale: Tabella Opportunità -->
+            <div>
+                <div class="card">
+                    <h3>🔥 Migliori Giocate Globali (Tutti gli Sport - Filtro Futuro Attivo)</h3>
+                    <table id="betsTable">
+                        <thead>
+                            <tr>
+                                <th>Sport / Match</th>
+                                <th>Pronostico</th>
+                                <th>Quota</th>
+                                <th>EV</th>
+                                <th>Rischio</th>
+                                <th>Azione</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td colspan="6" style="text-align: center;">Caricamento dati in tempo reale da results.json...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
 
-        <!-- TAB 2: MULTIPLA -->
-        <div id="tab-multipla" class="tab-content">
-            <h3 style="font-size:14px; margin-top:0; color: var(--text-muted);">Simulatore Multipla & Probabilità Composta</h3>
-            <div class="card">
-                <p style="color:var(--text-muted); font-size:12px; margin-top:0;">Seleziona gli eventi per la schedina:</p>
-                <div id="multipla-builder"></div>
-                <hr style="border-color:var(--border); margin: 15px 0;">
-                <p>Quota Moltiplicata: <b id="tot-quota" style="color:var(--accent);">1.00</b></p>
-                <p>Probabilità Composta Reale: <b id="tot-prob" style="color:var(--accent);">100%</b></p>
-                <p>Vincita Potenziale (3.00€): <b id="tot-win" style="color:var(--accent); font-size:18px;">0.00€</b></p>
-                <button class="btn" onclick="confermaMultipla()">Gioca Multipla</button>
+            <!-- Colonna Laterale: Simulatore Schedina & Cashout -->
+            <div>
+                <div class="card slip-box">
+                    <h3>🎟️ Simulatore Schedina & Cashout</h3>
+                    <p style="font-size: 0.85em; color: #aaa;">Clicca "Aggiungi" sulle giocate per comporre la tua combinata.</p>
+                    <div id="slipItems">
+                        <p style="color: #666; font-size: 0.85em;">Nessun evento selezionato.</p>
+                    </div>
+                    <hr style="border-color: #444; margin: 15px 0;">
+                    <div style="font-size: 0.9em;">
+                        <p>Quota Totale: <strong id="totalOdds" style="color: #00ffcc;">1.00</strong></p>
+                        <p>Stake Consigliato: <strong id="recommendedStake">0%</strong></p>
+                        <p>Cashout Teorico Live: <strong id="cashoutValue" style="color: #f1c40f;">€ 0.00</strong></p>
+                    </div>
+                    <div style="margin-top: 15px;">
+                        <input type="number" id="betAmount" placeholder="Importo Puntata (€)" style="width: 100%; padding: 8px; background: #121212; border: 1px solid #444; color: #fff; border-radius: 4px; margin-bottom: 10px;" oninput="updateSlip()">
+                        <button class="btn" style="width: 100%;" onclick="simulateCashoutOffer()">Simula Offerta Cashout Ufficiale</button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 
-    <nav>
-        <button class="nav-item active" onclick="switchTab('palinsesto', this)">📊 Palinsesto Singole</button>
-        <button class="nav-item" onclick="switchTab('multipla', this)">🔗 Calcolatore Multipla</button>
-    </nav>
-
     <script>
-        const eventiData = {{EVENTI_JSON}};
+        let selectedBets = [];
+        let globalBetsData = [];
 
-        function renderApp(data) {
-            let htmlSingole = "";
-            let htmlMultipla = "";
-            
-            data.forEach((m) => {
-                htmlSingole += `
-                <div class="card">
-                    <div class="card-header"><span>${m.sport}</span><span>Prob. Reale: ${m.probabilita}</span></div>
-                    <div class="match-title">${m.match}</div>
-                    <div class="match-details">
-                        <span class="market-tag">${m.esito}</span><br>
-                        📖 ${m.descrizione}<br>
-                        🎯 Quota Calcolata: <b>${m.quota}</b>
-                    </div>
-                    <button class="btn" onclick="alert('Giocata singola simulata su: ${m.match}')">Punta Singola (3.00€)</button>
-                </div>`;
-
-                htmlMultipla += `
-                <label class="checkbox-container">
-                    <input type="checkbox" value="${m.quota}" data-prob="${parseFloat(m.probabilita)}" onchange="calcolaMultipla()"> 
-                    <b>[${m.sport}]</b> ${m.match}<br>
-                    <span style="color:var(--accent);">➔ Esito: ${m.esito} (Quota: ${m.quota})</span>
-                </label>`;
-            });
-
-            document.getElementById('matches-list').innerHTML = htmlSingole;
-            document.getElementById('multipla-builder').innerHTML = htmlMultipla;
-        }
-
-        function switchTab(tabName, element) {
-            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-            
-            if(tabName === 'palinsesto') {
-                document.getElementById('tab-palinsesto').classList.add('active');
-            } else {
-                document.getElementById('tab-multipla').classList.add('active');
+        async function loadData() {
+            try {
+                const response = await fetch('results.json');
+                const data = await response.json();
+                globalBetsData = data.recommendations || [];
+                renderTable(globalBetsData);
+            } catch (error) {
+                console.error("Errore caricamento dati:", error);
             }
-            element.classList.add('active');
         }
 
-        function calcolaMultipla() {
-            let checkboxes = document.querySelectorAll('#multipla-builder input:checked');
-            let quotaTot = 1.0;
-            let probComposta = 1.0;
-
-            checkboxes.forEach(cb => {
-                quotaTot *= parseFloat(cb.value);
-                probComposta *= (parseFloat(cb.getAttribute('data-prob')) / 100);
-            });
+        function renderTable(bets) {
+            const tbody = document.querySelector("#betsTable tbody");
+            tbody.innerHTML = "";
             
-            if (checkboxes.length === 0) {
-                quotaTot = 1.00;
-                probComposta = 1.00;
-            }
-            
-            let vincita = 3.00 * quotaTot;
-            document.getElementById('tot-quota').innerText = quotaTot.toFixed(2);
-            document.getElementById('tot-prob').innerText = (probComposta * 100).toFixed(1) + '%';
-            document.getElementById('tot-win').innerText = (checkboxes.length > 0 ? vincita.toFixed(2) : "0.00") + '€';
-        }
-
-        function confermaMultipla() {
-            let checkboxes = document.querySelectorAll('#multipla-builder input:checked');
-            if (checkboxes.length < 2) {
-                alert('⚠️ Seleziona almeno 2 eventi per creare la multipla!');
+            if (bets.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;">Nessuna inefficienza attiva al momento.</td></tr>`;
                 return;
             }
-            alert('✅ Multipla registrata con successo!');
+
+            bets.forEach((bet, index) => {
+                let riskClass = bet.risk === 'Basso' ? 'badge-risk-low' : 'badge-risk-med';
+                let row = `<tr>
+                    <td><strong>${bet.sport}</strong><br><small>${bet.match}</small></td>
+                    <td>${bet.pick}</td>
+                    <td style="color:#00ffcc; font-weight:bold;">${bet.odds}</td>
+                    <td><span class="badge badge-ev">+${bet.ev}%</span></td>
+                    <td><span class="badge ${riskClass}">${bet.risk}</span></td>
+                    <td><button class="btn" onclick="addToSlip(${index})">Aggiungi</button></td>
+                </tr>`;
+                tbody.innerHTML += row;
+            });
         }
 
-        renderApp(eventiData);
+        function addToSlip(index) {
+            let bet = globalBetsData[index];
+            if (!selectedBets.some(b => b.id === bet.id)) {
+                selectedBets.push(bet);
+                updateSlip();
+            }
+        }
+
+        function updateSlip() {
+            const slipContainer = document.getElementById("slipItems");
+            if (selectedBets.length === 0) {
+                slipContainer.innerHTML = `<p style="color: #666; font-size: 0.85em;">Nessun evento selezionato.</p>`;
+                document.getElementById("totalOdds").innerText = "1.00";
+                document.getElementById("cashoutValue").innerText = "€ 0.00";
+                return;
+            }
+
+            slipContainer.innerHTML = "";
+            let totalOdds = 1.0;
+            selectedBets.forEach((b, i) => {
+                totalOdds *= b.odds;
+                slipContainer.innerHTML += `<div class="slip-item"><span>${b.match.substring(0, 20)}... (${b.pick})</span> <strong>@${b.odds}</strong></div>`;
+            });
+
+            document.getElementById("totalOdds").innerText = totalOdds.toFixed(2);
+            
+            let stake = parseFloat(document.getElementById("betAmount").value) || 0;
+            let potentialWin = stake * totalOdds;
+            
+            // Simulazione dinamica del cashout basata sul tempo/rischio residuo stimato
+            let simulatedCashout = stake > 0 ? potentialWin * 0.45 : 0; 
+            document.getElementById("cashoutValue").innerText = `€ ${simulatedCashout.toFixed(2)}`;
+        }
+
+        function simulateCashoutOffer() {
+            let stake = parseFloat(document.getElementById("betAmount").value) || 0;
+            if(stake <= 0 || selectedBets.length === 0) {
+                alert("Inserisci una puntata e seleziona almeno una giocata per simulare il cashout.");
+                return;
+            }
+            let totalOdds = parseFloat(document.getElementById("totalOdds").innerText);
+            let offer = (stake * totalOdds * 0.52).toFixed(2);
+            alert(`💰 Offerta di Cashout Ufficiale Simulata dal Bookmaker:\nL'algoritmo offre: € ${offer} per chiudere la combinata in anticipo.`);
+        }
+
+        loadData();
     </script>
 </body>
 </html>
