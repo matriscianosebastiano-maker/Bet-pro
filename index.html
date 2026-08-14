@@ -10,13 +10,13 @@
         table { width: 100%; border-collapse: collapse; background: #222; }
         th, td { padding: 15px; border-bottom: 1px solid #333; text-align: left; }
         th { color: #00ffcc; }
-        #lastUpdate { color: #888; font-size: 0.8em; margin-bottom: 10px; }
+        #lastUpdate { color: #00ffcc; font-size: 0.9em; margin-bottom: 10px; font-weight: bold; }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>BET-PRO QUANT ENGINE</h1>
-        <div id="lastUpdate">Caricamento stato...</div>
+        <div id="lastUpdate">Avvio script...</div>
         
         <div class="card">
             <h3>🔥 Analisi Mercati Globali</h3>
@@ -24,45 +24,51 @@
                 <thead>
                     <tr><th>Sport</th><th>Evento</th><th>Pick</th><th>Quota</th><th>EV%</th></tr>
                 </thead>
-                <tbody></tbody>
+                <tbody>
+                    <tr><td colspan="5" style="text-align:center; color:#888;">In attesa dei dati...</td></tr>
+                </tbody>
             </table>
         </div>
     </div>
 
     <script>
-        const statusEl = document.getElementById('lastUpdate');
-        statusEl.innerText = "Tentativo di caricamento in corso...";
+        // Funzione eseguita subito per verificare che JS funzioni
+        const statusBox = document.getElementById('lastUpdate');
+        statusBox.innerText = "Stato: Connessione al file JSON in corso...";
 
-        const timestamp = new Date().getTime();
-        // Usiamo il percorso relativo sicuro
-        fetch('./results.json?t=' + timestamp)
-            .then(response => {
-                if (!response.ok) throw new Error("Errore HTTP: " + response.status);
+        // Proviamo a caricare il file con percorso assoluto/relativo sicuro
+        fetch('./results.json?' + new Date().getTime())
+            .then(function(response) {
+                if (!response.ok) {
+                    throw new Error("File non trovato o errore HTTP: " + response.status);
+                }
                 return response.json();
             })
-            .then(data => {
-                console.log("Dati ricevuti:", data); // Questo ti serve per il debug
-                statusEl.innerText = "Ultimo aggiornamento: " + data.last_update;
+            .then(function(data) {
+                statusBox.innerText = "Ultimo aggiornamento server: " + (data.last_update || "N/D");
                 
                 const tbody = document.querySelector("#betsTable tbody");
                 tbody.innerHTML = ""; 
 
                 if (data.recommendations && data.recommendations.length > 0) {
-                    data.recommendations.forEach(b => {
+                    data.recommendations.forEach(function(b) {
                         tbody.innerHTML += `<tr>
-                            <td>${b.sport}</td>
-                            <td>${b.match}</td>
-                            <td>${b.pick}</td>
-                            <td style="color:#00ffcc;font-weight:bold;">${b.odds}</td>
-                            <td>+${b.ev}%</td>
+                            <td>${b.sport || ''}</td>
+                            <td>${b.match || ''}</td>
+                            <td>${b.pick || ''}</td>
+                            <td style="color:#00ffcc;font-weight:bold;">${b.odds || ''}</td>
+                            <td>+${b.ev || 0}%</td>
                         </tr>`;
                     });
                 } else {
-                    statusEl.innerText = "Nessuna opportunità trovata al momento (o file vuoto).";
+                    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:#ffcc00;">Nessuna quota disponibile al momento (Mercati vuoti).</td></tr>`;
                 }
             })
-            .catch(err => {
-                statusEl.innerText = "Errore critico: " + err.message;
-                console.error("Errore completo:", err);
+            .catch(function(error) {
+                statusBox.innerText = "ERRORE: " + error.message;
+                statusBox.style.color = "#ff4444";
+                console.error("Dettaglio errore:", error);
             });
     </script>
+</body>
+</html>
