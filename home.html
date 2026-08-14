@@ -5,35 +5,161 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Bet-Pro Multi-Sport Engine</title>
     <style>
-        body { font-family: sans-serif; background: #0f0f0f; color: #fff; padding: 10px; }
-        .card { background: #1a1a1a; padding: 15px; border-radius: 12px; margin-bottom: 15px; border: 1px solid #333; }
-        .top-pick { border: 2px solid #00ffcc; background: linear-gradient(145deg, #1a2a2a, #1a1a1a); }
-        .btn-add { background: #00ffcc; border: none; padding: 8px 16px; border-radius: 6px; font-weight: bold; cursor: pointer; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #121212; color: #fff; padding: 15px; margin: 0; }
+        .container { max-width: 1000px; margin: auto; }
+        .card { background: #1e1e1e; padding: 15px; border-radius: 10px; border-left: 4px solid #00ffcc; margin-bottom: 20px; box-sizing: border-box; }
+        .top-card { border-left: 4px solid #ffcc00; background: linear-gradient(135deg, #252216 0%, #1e1e1e 100%); }
+        table { width: 100%; border-collapse: collapse; background: #222; }
+        th, td { padding: 10px; border-bottom: 1px solid #333; text-align: left; font-size: 0.85em; }
+        th { color: #00ffcc; background: #181818; }
+        .btn-add { background: #00ffcc; border: none; padding: 6px 12px; cursor: pointer; border-radius: 4px; font-weight: bold; color: #121212; }
+        .btn-add:hover { background: #00b386; }
+        .risk-basso { color: #00ff00; font-weight: bold; }
+        .risk-medio { color: #ffcc00; font-weight: bold; }
+        .risk-alto { color: #ff4444; font-weight: bold; }
     </style>
 </head>
 <body>
-    <h1>BET-PRO ANALYZER</h1>
-    <div id="topSection"></div>
-    
-    <div class="card">
-        <h3>Altre Opportunità</h3>
-        <div id="listSection"></div>
+    <div class="container">
+        <h1>BET-PRO ENGINE</h1>
+        <div id="status" style="color: #00ffcc; margin-bottom: 15px; font-size: 0.9em;">Caricamento analisi in corso...</div>
+        
+        <!-- TOP PICK CONSIGLIATA -->
+        <div id="topPickContainer"></div>
+
+        <!-- TABELLA PALINSESTO -->
+        <div class="card">
+            <h3>📋 Palinsesto e Altre Opportunità</h3>
+            <div style="overflow-x: auto;">
+                <table id="betsTable">
+                    <thead>
+                        <tr>
+                            <th>Match</th>
+                            <th>Pronostico</th>
+                            <th>Quota</th>
+                            <th>Prob.%</th>
+                            <th>Rischio</th>
+                            <th>Azione</th>
+                        </tr>
+                    </thead>
+                    <tbody><tr><td colspan="6" style="text-align:center;">Caricamento dati...</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- SCHEDINA -->
+        <div class="card">
+            <h3>🧮 Schedina Selezionata</h3>
+            <div id="slipItems" style="margin-bottom: 10px; color: #aaa;">Nessuna selezione.</div>
+            <p><strong>Quota Totale:</strong> <span id="totalOdds" style="color:#00ffcc;">1.00</span></p>
+            <label>Importo (€): </label>
+            <input type="number" id="stake" value="10" oninput="updateCalculation()" style="background:#333; color:#fff; border:1px solid #444; padding:5px; width:80px; border-radius:4px;">
+            <p style="margin-top: 10px;"><strong>Vincita Potenziale:</strong> <span id="potentialWin" style="color:#00ffcc; font-size:1.1em; font-weight:bold;">0.00 €</span></p>
+        </div>
     </div>
 
     <script>
+        var allBets = [];
+        var selected = [];
+
         fetch('results.json?t=' + Date.now())
-            .then(r => r.json())
-            .then(data => {
+            .then(function(r) {
+                if (!r.ok) throw new Error("File results.json non trovato. Esegui l'azione su GitHub.");
+                return r.json();
+            })
+            .then(function(data) {
+                document.getElementById('status').innerText = "Ultimo aggiornamento: " + (data.last_update || "N/D");
+                
                 // RENDER TOP PICK
-                if(data.top_pick) {
-                    const t = data.top_pick;
-                    document.getElementById('topSection').innerHTML = `
-                        <div class="card top-pick">
-                            <h2 style="color:#00ffcc; margin-top:0;">🎯 TOP PICK: ${t.match}</h2>
-                            <p><strong>Pronostico:</strong> ${t.pick} @ ${t.odds}</p>
-                            <p>Probabilità calcolata: <strong>${t.prob}%</strong> | Rischio: <strong>${t.risk}</strong></p>
-                            <button class="btn-add" onclick="alert('Aggiunto!')">Aggiungi alla Schedina</button>
-                        </div>
+                var topDiv = document.getElementById('topPickContainer');
+                if (data.top_pick) {
+                    var tp = data.top_pick;
+                    topDiv.innerHTML = '<div class="card top-card">' +
+                        '<h3 style="color:#ffcc00; margin-top:0;">🎯 TOP PICK CONSIGLIATA</h3>' +
+                        '<p style="font-size: 1.1em; margin: 5px 0;"><strong>' + tp.match + '</strong></p>' +
+                        '<p style="margin: 5px 0;">Puntata consigliata: <span style="color:#00ffcc; font-weight:bold; font-size:1.1em;">' + tp.pick + '</span> a quota <strong style="color:#fff;">' + tp.odds + '</strong></p>' +
+                        '<p style="font-size: 0.85em; color: #ccc; margin: 5px 0;">Probabilità stimata: ' + tp.prob + '% | Valutazione Rischio: ' + tp.risk + '</p>' +
+                        '<button class="btn-add" style="margin-top:8px;" onclick="addBet(\'' + tp.id + '\')">Aggiungi alla Schedina</button>' +
+                    '</div>';
+                }
+
+                // RENDER TABELLA
+                allBets = data.recommendations || [];
+                var tbody = document.querySelector("#betsTable tbody");
+                tbody.innerHTML = "";
+
+                if(allBets.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#ffcc00;">Nessun evento disponibile.</td></tr>';
+                    return;
+                }
+
+                allBets.forEach(function(b) {
+                    var riskClass = "risk-medio";
+                    if(b.risk.includes("Basso")) riskClass = "risk-basso";
+                    if(b.risk.includes("Alto")) riskClass = "risk-alto";
+
+                    var tr = document.createElement('tr');
+                    tr.innerHTML = '<td><strong>' + b.match + '</strong><br><span style="font-size:0.75em; color:#888;">' + b.sport + '</span></td>' +
+                                   '<td style="font-weight:bold; color:#00ffcc;">' + b.pick + '</td>' +
+                                   '<td style="font-weight:bold;">' + b.odds + '</td>' +
+                                   '<td>' + b.prob + '%</td>' +
+                                   '<td><span class="' + riskClass + '">' + b.risk + '</span></td>' +
+                                   '<td><button class="btn-add" onclick="addBet(\'' + b.id + '\')">+</button></td>';
+                    tbody.appendChild(tr);
+                });
+            })
+            .catch(function(err) {
+                document.getElementById('status').innerText = "ERRORE: " + err.message;
+                document.getElementById('status').style.color = "#ff4444";
+                document.querySelector("#betsTable tbody").innerHTML = '<tr><td colspan="6" style="text-align:center; color:#ff4444;">Impossibile caricare i dati.</td></tr>';
+            });
+
+        window.addBet = function(id) {
+            // Cerca sia tra le raccomandazioni che nella top pick
+            var allPool = allBets.slice();
+            // Aggiungiamo eventuale top pick se non è già presente
+            fetch('results.json').then(r => r.json()).then(d => {
+                if(d.top_pick && !allPool.some(x => x.id === d.top_pick.id)) {
+                    allPool.push(d.top_pick);
+                }
+                var bet = allPool.find(function(x) { return x.id === id; });
+                if (bet && !selected.some(function(x) { return x.id === id; })) {
+                    selected.push(bet);
+                    renderSlip();
+                }
+            });
+        };
+
+        function renderSlip() {
+            var slipDiv = document.getElementById('slipItems');
+            if (selected.length === 0) {
+                slipDiv.innerHTML = "Nessuna selezione.";
+                updateCalculation();
+                return;
+            }
+            slipDiv.innerHTML = selected.map(function(x) {
+                return '<div style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; background:#2a2a2a; padding:6px; border-radius:4px;">' +
+                       '<div><strong>' + x.match + '</strong><br><span style="color:#00ffcc;">' + x.pick + '</span> (Quota: ' + x.odds + ')</div>' +
+                       '<button onclick="removeBet(\'' + x.id + '\')" style="background:#ff4444; color:#fff; border:none; padding:2px 6px; border-radius:3px; cursor:pointer;">X</button>' +
+                       '</div>';
+            }).join('');
+            updateCalculation();
+        }
+
+        window.removeBet = function(id) {
+            selected = selected.filter(function(x) { return x.id !== id; });
+            renderSlip();
+        };
+
+        function updateCalculation() {
+            var total = selected.reduce(function(acc, b) { return acc * b.odds; }, 1);
+            var stake = parseFloat(document.getElementById('stake').value) || 0;
+            document.getElementById('totalOdds').innerText = selected.length > 0 ? total.toFixed(2) : "1.00";
+            document.getElementById('potentialWin').innerText = (selected.length > 0 ? (total * stake).toFixed(2) : "0.00") + " €";
+        }
+    </script>
+</body>
+</html>
                     `;
                 }
                 
