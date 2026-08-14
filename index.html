@@ -8,26 +8,27 @@
         .container { max-width: 1200px; margin: auto; }
         .card { background: #1e1e1e; padding: 20px; border-radius: 10px; border-left: 4px solid #00ffcc; margin-bottom: 20px; }
         table { width: 100%; border-collapse: collapse; background: #222; }
-        th, td { padding: 12px; border-bottom: 1px solid #333; text-align: left; }
-        .btn-add { background: #00ffcc; border: none; padding: 5px 10px; cursor: pointer; border-radius: 4px; }
+        th, td { padding: 12px; border-bottom: 1px solid #333; text-align: left; font-size: 0.9em; }
+        th { color: #00ffcc; }
+        .btn-add { background: #00ffcc; border: none; padding: 5px 10px; cursor: pointer; border-radius: 4px; font-weight: bold; color: #121212; }
         .sidebar { background: #1e1e1e; padding: 20px; border-radius: 10px; margin-top: 20px; }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>BET-PRO ENGINE</h1>
-        <div id="status" style="color: #00ffcc;">Caricamento in corso...</div>
+        <div id="status" style="color: #00ffcc; margin-bottom: 15px;">Caricamento in corso...</div>
         <div class="card">
             <table id="betsTable">
                 <thead><tr><th>Sport</th><th>Match</th><th>Pick</th><th>Prob %</th><th>Quota</th><th>EV%</th><th>Azioni</th></tr></thead>
-                <tbody></tbody>
+                <tbody><tr><td colspan="7" style="text-align:center; color:#888;">In attesa dei dati...</td></tr></tbody>
             </table>
         </div>
         <div class="sidebar">
             <h3>Schedina</h3>
             <div id="slipItems">Nessuna selezione.</div>
             <p><strong>Totale Quota:</strong> <span id="totalOdds">1.00</span></p>
-            <input type="number" id="stake" value="10" oninput="updateCalculation()"> €
+            <input type="number" id="stake" value="10" oninput="updateCalculation()" style="background:#222; color:#fff; border:1px solid #444; padding:5px; width:80px;"> €
             <p><strong>Vincita:</strong> <span id="potentialWin">0.00</span> €</p>
         </div>
     </div>
@@ -35,16 +36,39 @@
         let allBets = [];
         let selected = [];
 
-        fetch('results.json?t=' + new Date().getTime())
-            .then(r => r.json())
+        const jsonUrl = 'https://matriscianosebastiano-maker.github.io/Bet-pro/results.json?t=' + new Date().getTime();
+
+        fetch(jsonUrl)
+            .then(r => {
+                if (!r.ok) throw new Error("File JSON non trovato (404)");
+                return r.json();
+            })
             .then(data => {
-                document.getElementById('status').innerText = "Ultimo aggiornamento: " + data.last_update;
-                allBets = data.recommendations;
+                document.getElementById('status').innerText = "Ultimo aggiornamento: " + (data.last_update || "N/D");
+                allBets = data.recommendations || [];
                 let tbody = document.querySelector("#betsTable tbody");
-                allBets.forEach(b => {
-                    tbody.innerHTML += `<tr><td>${b.sport}</td><td>${b.match}</td><td>${b.pick}</td><td>${b.probability}%</td><td>${b.odds}</td><td>${b.ev}%</td><td><button class="btn-add" onclick="add('${b.id}')">Aggiungi</button></td></tr>`;
-                });
-            }).catch(e => document.getElementById('status').innerText = "Errore: " + e.message);
+                tbody.innerHTML = "";
+
+                if (allBets.length > 0) {
+                    allBets.forEach(b => {
+                        tbody.innerHTML += `<tr>
+                            <td>${b.sport}</td>
+                            <td>${b.match}</td>
+                            <td style="font-weight:bold; color:#fff;">${b.pick}</td>
+                            <td style="color:#00ffcc;">${b.probability}%</td>
+                            <td style="font-weight:bold;">${b.odds}</td>
+                            <td style="color:#00ffcc;">+${b.ev}%</td>
+                            <td><button class="btn-add" onclick="add('${b.id}')">Aggiungi</button></td>
+                        </tr>`;
+                    });
+                } else {
+                    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#ffcc00;">Nessun evento disponibile al momento (campionati in pausa o quote non ancora caricate).</td></tr>`;
+                }
+            })
+            .catch(e => {
+                document.getElementById('status').innerText = "Errore: " + e.message;
+                document.getElementById('status').style.color = "red";
+            });
 
         function add(id) {
             if(!selected.find(x => x.id === id)) selected.push(allBets.find(x => x.id === id));
@@ -52,14 +76,20 @@
         }
 
         function renderSlip() {
-            document.getElementById('slipItems').innerHTML = selected.map(x => `<div>${x.match} (${x.odds})</div>`).join('');
+            let slipDiv = document.getElementById('slipItems');
+            if (selected.length === 0) {
+                slipDiv.innerHTML = "Nessuna selezione.";
+                return;
+            }
+            slipDiv.innerHTML = selected.map(x => `<div style="margin-bottom:8px;"><strong>${x.match}</strong><br>Pick: ${x.pick} (${x.odds})</div>`).join('');
             updateCalculation();
         }
 
         function updateCalculation() {
             let total = selected.reduce((acc, b) => acc * b.odds, 1);
+            let stake = parseFloat(document.getElementById('stake').value) || 0;
             document.getElementById('totalOdds').innerText = total.toFixed(2);
-            document.getElementById('potentialWin').innerText = (total * document.getElementById('stake').value).toFixed(2);
+            document.getElementById('potentialWin').innerText = (total * stake).toFixed(2);
         }
     </script>
 </body>
