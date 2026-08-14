@@ -59,273 +59,9 @@
     </div>
 
     <script>
-        let allBets = [];
-        let selected = [];
-        let globalTopPick = null;
-
-        fetch('results.json?t=' + Date.now())
-            .then(r => {
-                if (!r.ok) throw new Error("File results.json non trovato. Esegui l'azione su GitHub.");
-                return r.json();
-            })
-            .then(data => {
-                document.getElementById('status').innerText = "Ultimo aggiornamento: " + (data.last_update || "N/D");
-                globalTopPick = data.top_pick;
-                
-                // RENDER TOP PICK
-                let topDiv = document.getElementById('topPickContainer');
-                if (globalTopPick) {
-                    topDiv.innerHTML = `
-                        <div class="card top-card">
-                            <h3 style="color:#ffcc00; margin-top:0;">🎯 TOP PICK CONSIGLIATA</h3>
-                            <p style="font-size: 1.1em; margin: 5px 0;"><strong>${globalTopPick.match}</strong></p>
-                            <p style="margin: 5px 0;">Puntata consigliata: <span style="color:#00ffcc; font-weight:bold; font-size:1.1em;">${globalTopPick.pick}</span> a quota <strong style="color:#fff;">${globalTopPick.odds}</strong></p>
-                            <p style="font-size: 0.85em; color: #ccc; margin: 5px 0;">Probabilità stimata: ${globalTopPick.prob}% | Valutazione Rischio: ${globalTopPick.risk}</p>
-                            <button class="btn-add" style="margin-top:8px;" onclick="addBet('${globalTopPick.id}')">Aggiungi alla Schedina</button>
-                        </div>
-                    `;
-                }
-
-                // RENDER TABELLA
-                allBets = data.recommendations || [];
-                let tbody = document.querySelector("#betsTable tbody");
-                tbody.innerHTML = "";
-
-                if(allBets.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#ffcc00;">Nessun evento disponibile.</td></tr>';
-                    return;
-                }
-
-                allBets.forEach(b => {
-                    let riskClass = "risk-medio";
-                    if(b.risk.includes("Basso")) riskClass = "risk-basso";
-                    if(b.risk.includes("Alto")) riskClass = "risk-alto";
-
-                    let tr = document.createElement('tr');
-                    tr.innerHTML = `
-                        <td><strong>${b.match}</strong><br><span style="font-size:0.75em; color:#888;">${b.sport}</span></td>
-                        <td style="font-weight:bold; color:#00ffcc;">${b.pick}</td>
-                        <td style="font-weight:bold;">${b.odds}</td>
-                        <td>${b.prob}%</td>
-                        <td><span class="${riskClass}">${b.risk}</span></td>
-                        <td><button class="btn-add" onclick="addBet('${b.id}')">+</button></td>
-                    `;
-                    tbody.appendChild(tr);
-                });
-            })
-            .catch(err => {
-                document.getElementById('status').innerText = "ERRORE: " + err.message;
-                document.getElementById('status').style.color = "#ff4444";
-                document.querySelector("#betsTable tbody").innerHTML = '<tr><td colspan="6" style="text-align:center; color:#ff4444;">Impossibile caricare i dati.</td></tr>';
-            });
-
-        window.addBet = function(id) {
-            let bet = null;
-            if (globalTopPick && globalTopPick.id === id) {
-                bet = globalTopPick;
-            } else {
-                bet = allBets.find(x => x.id === id);
-            }
-
-            if (bet && !selected.some(x => x.id === id)) {
-                selected.push(bet);
-                renderSlip();
-            }
-        };
-
-        function renderSlip() {
-            let slipDiv = document.getElementById('slipItems');
-            if (selected.length === 0) {
-                slipDiv.innerHTML = "Nessuna selezione.";
-                updateCalculation();
-                return;
-            }
-            slipDiv.innerHTML = selected.map(x => `
-                <div style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; background:#2a2a2a; padding:6px; border-radius:4px;">
-                    <div><strong>${x.match}</strong><br><span style="color:#00ffcc;">${x.pick}</span> (Quota: ${x.odds})</div>
-                    <button onclick="removeBet('${x.id}')" style="background:#ff4444; color:#fff; border:none; padding:2px 6px; border-radius:3px; cursor:pointer;">X</button>
-                </div>
-            `).join('');
-            updateCalculation();
-        }
-
-        window.removeBet = function(id) {
-            selected = selected.filter(x => x.id !== id);
-            renderSlip();
-        };
-
-        function updateCalculation() {
-            let total = selected.reduce((acc, b) => acc * b.odds, 1);
-            let stake = parseFloat(document.getElementById('stake').value) || 0;
-            document.getElementById('totalOdds').innerText = selected.length > 0 ? total.toFixed(2) : "1.00";
-            document.getElementById('potentialWin').innerText = (selected.length > 0 ? (total * stake).toFixed(2) : "0.00") + " €";
-        }
-    </script>
-</body>
-</html>
-                            <th>Match</th>
-                            <th>Pronostico</th>
-                            <th>Quota</th>
-                            <th>Prob.%</th>
-                            <th>Rischio</th>
-                            <th>Azione</th>
-                        </tr>
-                    </thead>
-                    <tbody><tr><td colspan="6" style="text-align:center;">Caricamento dati...</td></tr></tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- SCHEDINA -->
-        <div class="card">
-            <h3>🧮 Schedina Selezionata</h3>
-            <div id="slipItems" style="margin-bottom: 10px; color: #aaa;">Nessuna selezione.</div>
-            <p><strong>Quota Totale:</strong> <span id="totalOdds" style="color:#00ffcc;">1.00</span></p>
-            <label>Importo (€): </label>
-            <input type="number" id="stake" value="10" oninput="updateCalculation()" style="background:#333; color:#fff; border:1px solid #444; padding:5px; width:80px; border-radius:4px;">
-            <p style="margin-top: 10px;"><strong>Vincita Potenziale:</strong> <span id="potentialWin" style="color:#00ffcc; font-size:1.1em; font-weight:bold;">0.00 €</span></p>
-        </div>
-    </div>
-
-    <script>
         var allBets = [];
         var selected = [];
-
-        fetch('results.json?t=' + Date.now())
-            .then(function(r) {
-                if (!r.ok) throw new Error("File results.json non trovato. Esegui l'azione su GitHub.");
-                return r.json();
-            })
-            .then(function(data) {
-                document.getElementById('status').innerText = "Ultimo aggiornamento: " + (data.last_update || "N/D");
-                
-                // RENDER TOP PICK
-                var topDiv = document.getElementById('topPickContainer');
-                if (data.top_pick) {
-                    var tp = data.top_pick;
-                    topDiv.innerHTML = '<div class="card top-card">' +
-                        '<h3 style="color:#ffcc00; margin-top:0;">🎯 TOP PICK CONSIGLIATA</h3>' +
-                        '<p style="font-size: 1.1em; margin: 5px 0;"><strong>' + tp.match + '</strong></p>' +
-                        '<p style="margin: 5px 0;">Puntata consigliata: <span style="color:#00ffcc; font-weight:bold; font-size:1.1em;">' + tp.pick + '</span> a quota <strong style="color:#fff;">' + tp.odds + '</strong></p>' +
-                        '<p style="font-size: 0.85em; color: #ccc; margin: 5px 0;">Probabilità stimata: ' + tp.prob + '% | Valutazione Rischio: ' + tp.risk + '</p>' +
-                        '<button class="btn-add" style="margin-top:8px;" onclick="addBet(\'' + tp.id + '\')">Aggiungi alla Schedina</button>' +
-                    '</div>';
-                }
-
-                // RENDER TABELLA
-                allBets = data.recommendations || [];
-                var tbody = document.querySelector("#betsTable tbody");
-                tbody.innerHTML = "";
-
-                if(allBets.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#ffcc00;">Nessun evento disponibile.</td></tr>';
-                    return;
-                }
-
-                allBets.forEach(function(b) {
-                    var riskClass = "risk-medio";
-                    if(b.risk.includes("Basso")) riskClass = "risk-basso";
-                    if(b.risk.includes("Alto")) riskClass = "risk-alto";
-
-                    var tr = document.createElement('tr');
-                    tr.innerHTML = '<td><strong>' + b.match + '</strong><br><span style="font-size:0.75em; color:#888;">' + b.sport + '</span></td>' +
-                                   '<td style="font-weight:bold; color:#00ffcc;">' + b.pick + '</td>' +
-                                   '<td style="font-weight:bold;">' + b.odds + '</td>' +
-                                   '<td>' + b.prob + '%</td>' +
-                                   '<td><span class="' + riskClass + '">' + b.risk + '</span></td>' +
-                                   '<td><button class="btn-add" onclick="addBet(\'' + b.id + '\')">+</button></td>';
-                    tbody.appendChild(tr);
-                });
-            })
-            .catch(function(err) {
-                document.getElementById('status').innerText = "ERRORE: " + err.message;
-                document.getElementById('status').style.color = "#ff4444";
-                document.querySelector("#betsTable tbody").innerHTML = '<tr><td colspan="6" style="text-align:center; color:#ff4444;">Impossibile caricare i dati.</td></tr>';
-            });
-
-        window.addBet = function(id) {
-            // Cerca sia tra le raccomandazioni che nella top pick
-            var allPool = allBets.slice();
-            // Aggiungiamo eventuale top pick se non è già presente
-            fetch('results.json').then(r => r.json()).then(d => {
-                if(d.top_pick && !allPool.some(x => x.id === d.top_pick.id)) {
-                    allPool.push(d.top_pick);
-                }
-                var bet = allPool.find(function(x) { return x.id === id; });
-                if (bet && !selected.some(function(x) { return x.id === id; })) {
-                    selected.push(bet);
-                    renderSlip();
-                }
-            });
-        };
-
-        function renderSlip() {
-            var slipDiv = document.getElementById('slipItems');
-            if (selected.length === 0) {
-                slipDiv.innerHTML = "Nessuna selezione.";
-                updateCalculation();
-                return;
-            }
-            slipDiv.innerHTML = selected.map(function(x) {
-                return '<div style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; background:#2a2a2a; padding:6px; border-radius:4px;">' +
-                       '<div><strong>' + x.match + '</strong><br><span style="color:#00ffcc;">' + x.pick + '</span> (Quota: ' + x.odds + ')</div>' +
-                       '<button onclick="removeBet(\'' + x.id + '\')" style="background:#ff4444; color:#fff; border:none; padding:2px 6px; border-radius:3px; cursor:pointer;">X</button>' +
-                       '</div>';
-            }).join('');
-            updateCalculation();
-        }
-
-        window.removeBet = function(id) {
-            selected = selected.filter(function(x) { return x.id !== id; });
-            renderSlip();
-        };
-
-        function updateCalculation() {
-            var total = selected.reduce(function(acc, b) { return acc * b.odds; }, 1);
-            var stake = parseFloat(document.getElementById('stake').value) || 0;
-            document.getElementById('totalOdds').innerText = selected.length > 0 ? total.toFixed(2) : "1.00";
-            document.getElementById('potentialWin').innerText = (selected.length > 0 ? (total * stake).toFixed(2) : "0.00") + " €";
-        }
-    </script>
-</body>
-</html>
-                    `;
-                }
-                
-                // RENDER LIST
-                let html = "";
-                data.recommendations.forEach(b => {
-                    html += `<div style="padding:10px; border-bottom:1px solid #333;">
-                        <strong>${b.match}</strong><br>
-                        ${b.pick} @ ${b.odds} <span style="color:#00ffcc;">(${b.risk})</span>
-                    </div>`;
-                });
-                document.getElementById('listSection').innerHTML = html;
-            });
-    </script>
-</body>
-</html>
-                            <th>Insight</th>
-                            <th>Azione</th>
-                        </tr>
-                    </thead>
-                    <tbody><tr><td colspan="8" style="text-align:center;">Caricamento dati...</td></tr></tbody>
-                </table>
-            </div>
-        </div>
-
-        <div class="card">
-            <h3>Schedina Selezionata</h3>
-            <div id="slipItems">Nessuna selezione.</div>
-            <p><strong>Quota Totale:</strong> <span id="totalOdds" style="color:#00ffcc;">1.00</span></p>
-            <input type="number" id="stake" value="10" oninput="updateCalculation()" style="background:#333; color:#fff; border:1px solid #444; padding:5px; width:80px; border-radius:4px;"> €
-            <p><strong>Vincita Potenziale:</strong> <span id="potentialWin" style="color:#00ffcc; font-size:1.1em; font-weight:bold;">0.00</span> €</p>
-        </div>
-    </div>
-
-    <script>
-        var allBets = [];
-        var selected = [];
+        var globalTopPick = null;
 
         fetch('results.json?t=' + Date.now())
             .then(function(r) {
@@ -334,36 +70,58 @@
             })
             .then(function(data) {
                 document.getElementById('status').innerText = "Ultimo aggiornamento: " + (data.last_update || "N/D");
+                globalTopPick = data.top_pick || null;
+                
+                var topDiv = document.getElementById('topPickContainer');
+                if (globalTopPick) {
+                    topDiv.innerHTML = '<div class="card top-card">' +
+                        '<h3 style="color:#ffcc00; margin-top:0;">🎯 TOP PICK CONSIGLIATA</h3>' +
+                        '<p style="font-size: 1.1em; margin: 5px 0;"><strong>' + (globalTopPick.match || '') + '</strong></p>' +
+                        '<p style="margin: 5px 0;">Puntata consigliata: <span style="color:#00ffcc; font-weight:bold; font-size:1.1em;">' + (globalTopPick.pick || '') + '</span> a quota <strong style="color:#fff;">' + (globalTopPick.odds || '') + '</strong></p>' +
+                        '<p style="font-size: 0.85em; color: #ccc; margin: 5px 0;">Probabilità stimata: ' + (globalTopPick.prob || '') + '% | Valutazione Rischio: ' + (globalTopPick.risk || 'N/D') + '</p>' +
+                        '<button class="btn-add" style="margin-top:8px;" onclick="addBet(\'' + (globalTopPick.id || '') + '\')">Aggiungi alla Schedina</button>' +
+                    '</div>';
+                }
+
                 allBets = data.recommendations || [];
                 var tbody = document.querySelector("#betsTable tbody");
                 tbody.innerHTML = "";
 
                 if(allBets.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:#ffcc00;">Nessun evento disponibile al momento.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#ffcc00;">Nessun evento disponibile.</td></tr>';
                     return;
                 }
 
                 allBets.forEach(function(b) {
+                    var riskText = b.risk || "";
+                    var riskClass = "risk-medio";
+                    if(riskText.indexOf("Basso") !== -1) riskClass = "risk-basso";
+                    if(riskText.indexOf("Alto") !== -1) riskClass = "risk-alto";
+
                     var tr = document.createElement('tr');
-                    tr.innerHTML = '<td><span style="font-size:0.75em; background:#333; padding:2px 6px; border-radius:3px; color:#00ffcc;">' + b.sport + '</span></td>' +
-                                   '<td>' + b.match + '</td>' +
-                                   '<td style="font-weight:bold; color:#fff;">' + b.pick + '</td>' +
-                                   '<td style="font-weight:bold;">' + b.odds + '</td>' +
-                                   '<td>' + b.prob + '%</td>' +
-                                   '<td style="color:#00ffcc;">+' + b.ev + '%</td>' +
-                                   '<td><span class="tag-' + b.insight + '">' + b.insight + '</span></td>' +
-                                   '<td><button class="btn-add" onclick="addBet(\'' + b.id + '\')">+</button></td>';
+                    tr.innerHTML = '<td><strong>' + (b.match || '') + '</strong><br><span style="font-size:0.75em; color:#888;">' + (b.sport || '') + '</span></td>' +
+                                   '<td style="font-weight:bold; color:#00ffcc;">' + (b.pick || '') + '</td>' +
+                                   '<td style="font-weight:bold;">' + (b.odds || '') + '</td>' +
+                                   '<td>' + (b.prob || '') + '%</td>' +
+                                   '<td><span class="' + riskClass + '">' + riskText + '</span></td>' +
+                                   '<td><button class="btn-add" onclick="addBet(\'' + (b.id || '') + '\')">+</button></td>';
                     tbody.appendChild(tr);
                 });
             })
             .catch(function(err) {
                 document.getElementById('status').innerText = "ERRORE: " + err.message;
                 document.getElementById('status').style.color = "#ff4444";
-                document.querySelector("#betsTable tbody").innerHTML = '<tr><td colspan="8" style="text-align:center; color:#ff4444;">Impossibile caricare i dati.</td></tr>';
+                document.querySelector("#betsTable tbody").innerHTML = '<tr><td colspan="6" style="text-align:center; color:#ff4444;">Impossibile caricare i dati.</td></tr>';
             });
 
         window.addBet = function(id) {
-            var bet = allBets.find(function(x) { return x.id === id; });
+            var bet = null;
+            if (globalTopPick && globalTopPick.id === id) {
+                bet = globalTopPick;
+            } else {
+                bet = allBets.find(function(x) { return x.id === id; });
+            }
+
             if (bet && !selected.some(function(x) { return x.id === id; })) {
                 selected.push(bet);
                 renderSlip();
@@ -379,8 +137,8 @@
             }
             slipDiv.innerHTML = selected.map(function(x) {
                 return '<div style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; background:#2a2a2a; padding:6px; border-radius:4px;">' +
-                       '<div><strong>' + x.match + '</strong><br><span style="color:#00ffcc;">' + x.pick + '</span> (' + x.odds + ')</div>' +
-                       '<button onclick="removeBet(\'' + x.id + '\')" style="background:#ff4444; color:#fff; border:none; padding:2px 6px; border-radius:3px; cursor:pointer;">X</button>' +
+                       '<div><strong>' + (x.match || '') + '</strong><br><span style="color:#00ffcc;">' + (x.pick || '') + '</span> (Quota: ' + (x.odds || '') + ')</div>' +
+                       '<button onclick="removeBet(\'' + (x.id || '') + '\')" style="background:#ff4444; color:#fff; border:none; padding:2px 6px; border-radius:3px; cursor:pointer;">X</button>' +
                        '</div>';
             }).join('');
             updateCalculation();
@@ -392,123 +150,10 @@
         };
 
         function updateCalculation() {
-            var total = selected.reduce(function(acc, b) { return acc * b.odds; }, 1);
+            var total = selected.reduce(function(acc, b) { return acc * (b.odds || 1); }, 1);
             var stake = parseFloat(document.getElementById('stake').value) || 0;
-            document.getElementById('totalOdds').innerText = total.toFixed(2);
-            document.getElementById('potentialWin').innerText = (total * stake).toFixed(2) + " €";
-        }
-    </script>
-</body>
-</html>
-                            <th>Insight</th>
-                            <th>Azione</th>
-                        </tr>
-                    </thead>
-                    <tbody><tr><td colspan="8" style="text-align:center;">Caricamento dati...</td></tr></tbody>
-                </table>
-            </div>
-        </div>
-
-        <div class="card">
-            <h3>🧮 Schedina Selezionata</h3>
-            <div id="slipItems">Nessuna selezione.</div>
-            <p><strong>Quota Totale:</strong> <span id="totalOdds" style="color:#00ffcc;">1.00</span></p>
-            <input type="number" id="stake" value="10" oninput="updateCalculation()" style="background:#333; color:#fff; border:1px solid #444; padding:5px; width:80px; border-radius:4px;"> €
-            <p><strong>Vincita Potenziale:</strong> <span id="potentialWin" style="color:#00ffcc; font-size:1.1em; font-weight:bold;">0.00</span> €</p>
-        </div>
-    </div>
-
-    <script>
-        let allBets = [];
-        let selected = [];
-
-        fetch('results.json?t=' + Date.now())
-            .then(r => {
-                if (!r.ok) throw new Error("File results.json non trovato. Esegui l'Action su GitHub.");
-                return r.json();
-            })
-            .then(data => {
-                document.getElementById('status').innerText = "Ultimo aggiornamento: " + (data.last_update || "N/D");
-                allBets = data.recommendations || [];
-                let tbody = document.querySelector("#betsTable tbody");
-                tbody.innerHTML = "";
-
-                if(allBets.length === 0) {
-                    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:#ffcc00;">Nessun evento disponibile al momento.</td></tr>`;
-                    return;
-                }
-
-                allBets.forEach(b => {
-                    tbody.innerHTML += `<tr>
-                        <td><span style="font-size:0.75em; background:#333; padding:2px 6px; border-radius:3px; color:#00ffcc;">${b.sport}</span></td>
-                        <td>${b.match}</td>
-                        <td style="font-weight:bold; color:#fff;">${b.pick}</td>
-                        <td style="font-weight:bold;">${b.odds}</td>
-                        <td>${b.prob}%</td>
-                        <td style="color:#00ffcc;">+${b.ev}%</td>
-                        <td><span class="tag-${b.insight}">${b.insight}</span></td>
-                        <td><button class="btn-add" onclick="addBet('${b.id}')">+</button></td>
-                    </tr>`;
-                });
-            })
-            .catch(err => {
-                document.getElementById('status').innerText = "ERRORE: " + err.message;
-                document.getElementById('status').style.color = "#ff4444";
-                document.querySelector("#betsTable tbody").innerHTML = `<tr><td colspan="8" style="text-align:center; color:#ff4444;">Impossibile caricare i dati. Verifica GitHub Actions.</td></tr>`;
-            });
-
-        window.addBet = function(id) {
-            const bet = allBets.find(x => x.id === id);
-            if (bet && !selected.some(x => x.id === id)) {
-                selected.push(bet);
-                renderSlip();
-            }
-        };
-
-        function renderSlip() {
-            let slipDiv = document.getElementById('slipItems');
-            if (selected.length === 0) {
-                slipDiv.innerHTML = "Nessuna selezione.";
-                updateCalculation();
-                return;
-            }
-            slipDiv.innerHTML = selected.map(x => `
-                <div style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; background:#2a2a2a; padding:6px; border-radius:4px;">
-                    <div><strong>${x.match}</strong><br><span style="color:#00ffcc;">${x.pick}</span> (${x.odds})</div>
-                    <button onclick="removeBet('${x.id}')" style="background:#ff4444; color:#fff; border:none; padding:2px 6px; border-radius:3px; cursor:pointer;">X</button>
-                </div>
-            `).join('');
-            updateCalculation();
-        }
-
-        window.removeBet = function(id) {
-            selected = selected.filter(x => x.id !== id);
-            renderSlip();
-        }
-
-        function updateCalculation() {
-            let total = selected.reduce((acc, b) => acc * b.odds, 1);
-            let stake = parseFloat(document.getElementById('stake').value) || 0;
-            document.getElementById('totalOdds').innerText = total.toFixed(2);
-            document.getElementById('potentialWin').innerText = (total * stake).toFixed(2);
-        }
-    </script>
-</body>
-</html>
-            `).join('');
-            updateCalculation();
-        }
-
-        window.removeBet = function(id) {
-            selected = selected.filter(x => x.id !== id);
-            renderSlip();
-        }
-
-        function updateCalculation() {
-            let total = selected.reduce((acc, b) => acc * b.odds, 1);
-            let stake = parseFloat(document.getElementById('stake').value) || 0;
-            document.getElementById('totalOdds').innerText = total.toFixed(2);
-            document.getElementById('potentialWin').innerText = (total * stake).toFixed(2);
+            document.getElementById('totalOdds').innerText = selected.length > 0 ? total.toFixed(2) : "1.00";
+            document.getElementById('potentialWin').innerText = (selected.length > 0 ? (total * stake).toFixed(2) : "0.00") + " €";
         }
     </script>
 </body>
