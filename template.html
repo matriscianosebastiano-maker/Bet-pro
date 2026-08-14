@@ -2,165 +2,49 @@
 <html lang="it">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bet-Pro Quant Engine - Live Dashboard</title>
+    <title>Bet-Pro Quant Engine</title>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #121212; color: #e0e0e0; margin: 0; padding: 20px; }
-        .container { max-width: 1300px; margin: auto; background: #1e1e1e; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
-        h1 { color: #00ffcc; text-align: center; margin-bottom: 5px; }
-        .subtitle { text-align: center; color: #888; margin-bottom: 30px; font-size: 0.95em; }
-        .grid-layout { display: grid; grid-template-columns: 2.5fr 1fr; gap: 20px; }
-        .card { background: #2a2a2a; border-left: 5px solid #00ffcc; padding: 20px; margin-bottom: 20px; border-radius: 6px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-        th, td { padding: 10px; text-align: left; border-bottom: 1px solid #333; font-size: 0.9em; }
-        th { background-color: #333; color: #00ffcc; }
-        .badge { padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.85em; }
-        .badge-ev { background: #004d33; color: #00ffcc; }
-        .badge-risk-low { background: #1b4d3e; color: #2ecc71; }
-        .badge-risk-med { background: #5a4a00; color: #f1c40f; }
-        .btn { background: #00ffcc; color: #121212; border: none; padding: 6px 12px; border-radius: 4px; font-weight: bold; cursor: pointer; }
-        .btn:hover { background: #00ccb3; }
-        .slip-box { background: #222; padding: 15px; border-radius: 6px; border: 1px solid #444; }
-        .slip-item { display: flex; justify-content: space-between; margin-bottom: 10px; border-bottom: 1px dashed #444; padding-bottom: 5px; font-size: 0.85em; }
+        body { font-family: 'Segoe UI', sans-serif; background: #121212; color: #e0e0e0; margin: 0; padding: 20px; }
+        .container { max-width: 1200px; margin: auto; }
+        .card { background: #1e1e1e; padding: 20px; border-radius: 10px; border-left: 4px solid #00ffcc; margin-bottom: 20px; }
+        table { width: 100%; border-collapse: collapse; background: #222; }
+        th, td { padding: 15px; border-bottom: 1px solid #333; text-align: left; }
+        th { color: #00ffcc; }
+        #lastUpdate { color: #888; font-size: 0.8em; margin-bottom: 10px; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>BET-PRO QUANTITATIVE ENGINE</h1>
-        <div class="subtitle">Analisi Inefficienze Globali in Tempo Reale & Simulatore di Schedina con Cashout</div>
+        <h1>BET-PRO QUANT ENGINE</h1>
+        <div id="lastUpdate">Caricamento stato...</div>
         
-        <div class="grid-layout">
-            <!-- Colonna Principale: Tabella Opportunità -->
-            <div>
-                <div class="card">
-                    <h3>🔥 Migliori Giocate Globali (Tutti gli Sport - Filtro Futuro Attivo)</h3>
-                    <table id="betsTable">
-                        <thead>
-                            <tr>
-                                <th>Sport / Match</th>
-                                <th>Pronostico</th>
-                                <th>Quota</th>
-                                <th>EV</th>
-                                <th>Rischio</th>
-                                <th>Azione</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td colspan="6" style="text-align: center;">Caricamento dati in tempo reale da results.json...</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            <!-- Colonna Laterale: Simulatore Schedina & Cashout -->
-            <div>
-                <div class="card slip-box">
-                    <h3>🎟️ Simulatore Schedina & Cashout</h3>
-                    <p style="font-size: 0.85em; color: #aaa;">Clicca "Aggiungi" sulle giocate per comporre la tua combinata.</p>
-                    <div id="slipItems">
-                        <p style="color: #666; font-size: 0.85em;">Nessun evento selezionato.</p>
-                    </div>
-                    <hr style="border-color: #444; margin: 15px 0;">
-                    <div style="font-size: 0.9em;">
-                        <p>Quota Totale: <strong id="totalOdds" style="color: #00ffcc;">1.00</strong></p>
-                        <p>Stake Consigliato: <strong id="recommendedStake">0%</strong></p>
-                        <p>Cashout Teorico Live: <strong id="cashoutValue" style="color: #f1c40f;">€ 0.00</strong></p>
-                    </div>
-                    <div style="margin-top: 15px;">
-                        <input type="number" id="betAmount" placeholder="Importo Puntata (€)" style="width: 100%; padding: 8px; background: #121212; border: 1px solid #444; color: #fff; border-radius: 4px; margin-bottom: 10px;" oninput="updateSlip()">
-                        <button class="btn" style="width: 100%;" onclick="simulateCashoutOffer()">Simula Offerta Cashout Ufficiale</button>
-                    </div>
-                </div>
-            </div>
+        <div class="card">
+            <h3>🔥 Analisi Mercati Globali</h3>
+            <table id="betsTable">
+                <thead>
+                    <tr><th>Sport</th><th>Evento</th><th>Pick</th><th>Quota</th><th>EV%</th></tr>
+                </thead>
+                <tbody></tbody>
+            </table>
         </div>
     </div>
 
     <script>
-        let selectedBets = [];
-        let globalBetsData = [];
-
-        async function loadData() {
-            try {
-                const response = await fetch('results.json');
-                const data = await response.json();
-                globalBetsData = data.recommendations || [];
-                renderTable(globalBetsData);
-            } catch (error) {
-                console.error("Errore caricamento dati:", error);
-            }
-        }
-
-        function renderTable(bets) {
-            const tbody = document.querySelector("#betsTable tbody");
-            tbody.innerHTML = "";
-            
-            if (bets.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;">Nessuna inefficienza attiva al momento.</td></tr>`;
-                return;
-            }
-
-            bets.forEach((bet, index) => {
-                let riskClass = bet.risk === 'Basso' ? 'badge-risk-low' : 'badge-risk-med';
-                let row = `<tr>
-                    <td><strong>${bet.sport}</strong><br><small>${bet.match}</small></td>
-                    <td>${bet.pick}</td>
-                    <td style="color:#00ffcc; font-weight:bold;">${bet.odds}</td>
-                    <td><span class="badge badge-ev">+${bet.ev}%</span></td>
-                    <td><span class="badge ${riskClass}">${bet.risk}</span></td>
-                    <td><button class="btn" onclick="addToSlip(${index})">Aggiungi</button></td>
-                </tr>`;
-                tbody.innerHTML += row;
+        fetch('results.json')
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById('lastUpdate').innerText = "Ultimo aggiornamento server: " + data.last_update;
+                const tbody = document.querySelector("#betsTable tbody");
+                data.recommendations.forEach(b => {
+                    tbody.innerHTML += `<tr>
+                        <td>${b.sport}</td>
+                        <td>${b.match}</td>
+                        <td>${b.pick}</td>
+                        <td style="color:#00ffcc;font-weight:bold;">${b.odds}</td>
+                        <td>+${b.ev}%</td>
+                    </tr>`;
+                });
             });
-        }
-
-        function addToSlip(index) {
-            let bet = globalBetsData[index];
-            if (!selectedBets.some(b => b.id === bet.id)) {
-                selectedBets.push(bet);
-                updateSlip();
-            }
-        }
-
-        function updateSlip() {
-            const slipContainer = document.getElementById("slipItems");
-            if (selectedBets.length === 0) {
-                slipContainer.innerHTML = `<p style="color: #666; font-size: 0.85em;">Nessun evento selezionato.</p>`;
-                document.getElementById("totalOdds").innerText = "1.00";
-                document.getElementById("cashoutValue").innerText = "€ 0.00";
-                return;
-            }
-
-            slipContainer.innerHTML = "";
-            let totalOdds = 1.0;
-            selectedBets.forEach((b, i) => {
-                totalOdds *= b.odds;
-                slipContainer.innerHTML += `<div class="slip-item"><span>${b.match.substring(0, 20)}... (${b.pick})</span> <strong>@${b.odds}</strong></div>`;
-            });
-
-            document.getElementById("totalOdds").innerText = totalOdds.toFixed(2);
-            
-            let stake = parseFloat(document.getElementById("betAmount").value) || 0;
-            let potentialWin = stake * totalOdds;
-            
-            // Simulazione dinamica del cashout basata sul tempo/rischio residuo stimato
-            let simulatedCashout = stake > 0 ? potentialWin * 0.45 : 0; 
-            document.getElementById("cashoutValue").innerText = `€ ${simulatedCashout.toFixed(2)}`;
-        }
-
-        function simulateCashoutOffer() {
-            let stake = parseFloat(document.getElementById("betAmount").value) || 0;
-            if(stake <= 0 || selectedBets.length === 0) {
-                alert("Inserisci una puntata e seleziona almeno una giocata per simulare il cashout.");
-                return;
-            }
-            let totalOdds = parseFloat(document.getElementById("totalOdds").innerText);
-            let offer = (stake * totalOdds * 0.52).toFixed(2);
-            alert(`💰 Offerta di Cashout Ufficiale Simulata dal Bookmaker:\nL'algoritmo offre: € ${offer} per chiudere la combinata in anticipo.`);
-        }
-
-        loadData();
     </script>
 </body>
 </html>
