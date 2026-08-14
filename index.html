@@ -67,16 +67,21 @@
         let selectedBets = [];
 
         const timestamp = new Date().getTime();
-        fetch('./results.json?t=' + timestamp)
-            .then(res => res.json())
+        const jsonUrl = 'https://matriscianosebastiano-maker.github.io/Bet-pro/results.json?t=' + timestamp;
+
+        fetch(jsonUrl)
+            .then(res => {
+                if (!res.ok) throw new Error("File JSON non trovato (404)");
+                return res.json();
+            })
             .then(data => {
-                document.getElementById('lastUpdate').innerText = "Ultimo aggiornamento server: " + data.last_update;
+                document.getElementById('lastUpdate').innerText = "Ultimo aggiornamento server: " + (data.last_update || "N/D");
                 allBetsData = data.recommendations || [];
                 const tbody = document.querySelector("#betsTable tbody");
                 tbody.innerHTML = ""; 
 
                 if (allBetsData.length > 0) {
-                    allBetsData.forEach((b, index) => {
+                    allBetsData.forEach((b) => {
                         tbody.innerHTML += `<tr>
                             <td>${b.sport}</td>
                             <td>${b.match}</td>
@@ -92,14 +97,14 @@
                 }
             })
             .catch(err => {
-                document.getElementById('lastUpdate').innerText = "Errore nel caricamento del file results.json";
+                document.getElementById('lastUpdate').innerText = "Errore: " + err.message;
                 console.error(err);
             });
 
         function addToSlip(id) {
             const bet = allBetsData.find(b => b.id === id);
             if (!bet) return;
-            if (selectedBets.some(b => b.id === id)) return; // Evita duplicati
+            if (selectedBets.some(b => b.id === id)) return;
 
             selectedBets.push(bet);
             renderSlip();
