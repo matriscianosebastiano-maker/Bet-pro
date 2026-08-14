@@ -33,8 +33,6 @@ def run_global_quant_engine():
     
     for sport in GLOBAL_SPORTS:
         events = get_live_odds(sport)
-        print(f"[{sport.upper()}] Eventi futuri trovati: {len(events)}")
-        
         for event in events:
             for bookie in event.get('bookmakers', []):
                 for market in bookie.get('markets', []):
@@ -42,9 +40,8 @@ def run_global_quant_engine():
                         for outcome in market.get('outcomes', []):
                             price = outcome.get('price')
                             if price and price > 1.05:
-                                # Calcolo probabilità implicita e stimata dal modello quant
                                 implied_prob = 1 / price
-                                modeled_prob = implied_prob * 1.03  # Margine di valore quantitativo
+                                modeled_prob = implied_prob * 1.03  
                                 if modeled_prob > 0.99: 
                                     modeled_prob = 0.99
                                     
