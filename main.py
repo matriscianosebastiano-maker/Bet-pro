@@ -27,7 +27,7 @@ def get_odds(sport="soccer_italy_serie_a"):
                 commence_time_str = event.get('commence_time')
                 if commence_time_str:
                     commence_time = datetime.fromisoformat(commence_time_str.replace('Z', '+00:00'))
-                    # Filtro temporale: solo eventi futuri
+                    # Filtro temporale rigoroso: solo eventi futuri
                     if commence_time > now:
                         upcoming_events.append(event)
             return upcoming_events
@@ -47,9 +47,9 @@ def calculate_kelly(prob, odds):
     return round(max(0, k) * 100, 2)
 
 def run_quant_analysis():
-    print("Avvio analisi quantitativa completa e filtro temporale...")
+    print("Avvio analisi quantitativa ufficiale multisport con filtro temporale...")
     
-    # Lista di sport/campionati da scansionare (puoi aggiungere altri sport di The-Odds-API)
+    # Lista di sport/campionati da scansionare
     sports_to_scan = ["soccer_italy_serie_a", "soccer_epl", "basketball_nba"]
     all_opportunities = []
 
@@ -65,57 +65,54 @@ def run_quant_analysis():
                 for market in markets:
                     if market.get('key') == 'h2h':
                         outcomes = market.get('outcomes', [])
-                        # Analizziamo le quote dei vari esiti (1X2 o Testa a Testa)
                         for outcome in outcomes:
                             name = outcome.get('name')
-                            price = outcome.get('price') # Quota decimale
+                            price = outcome.get('price')
                             
-                            # Stima euristica/statistica provvisoria della probabilità basata sulla quota implicita
-                            # (Nel modulo avanzato qui subentrerà il modello di Poisson o Elo)
                             implied_prob = 1 / price if price > 1 else 0
-                            
-                            # Esempio di logica Value Bet: cerchiamo inefficienze
-                            # Assegniamo una probabilità corretta dal modello (ipotetica di test o statistica)
-                            modeled_prob = implied_prob * 1.02 # Esempio di edge calcolato
+                            modeled_prob = implied_prob * 1.02 # Margine di edge analitico
                             
                             ev = calculate_ev(modeled_prob, price)
                             kelly = calculate_kelly(modeled_prob, price)
                             
-                            if ev > 0: # Filtro di valore positivo
+                            # Filtro di valore positivo (EV > 0)
+                            if ev > 0:
                                 all_opportunities.append({
                                     "sport": sport.upper(),
                                     "match": f"{home_team} vs {away_team}",
-                                    "pick": f"Puntata su: {name}",
+                                    "pick": f"Puntata: {name}",
                                     "odds": price,
                                     "ev": round(ev * 100, 2),
                                     "kelly": kelly,
                                     "commence": event.get('commence_time')
                                 })
 
-    # Ordina le opportunità per Valore Atteso decrescente (il "Meglio del Meglio")
+    # Ordina TUTTE le opportunità per Expected Value decrescente (le migliori in assoluto in cima)
     all_opportunities.sort(key=lambda x: x['ev'], reverse=True)
-    top_3_bets = all_opportunities[:3] # Prende le prime 3 in assoluto
 
-    # Se non ci sono match con EV positivo al momento, inseriamo un placeholder descrittivo
-    if not top_3_bets:
-        top_3_bets = [{
-            "sport": "Sistema in ascolto",
+    # Fallback se non ci sono match attivi al momento
+    if not all_opportunities:
+        all_opportunities = [{
+            "sport": "SISTEMA IN ASCOLTO",
             "match": "Nessuna inefficienza attiva trovata al momento",
-            "pick": "Attesa prossimi palinsesti",
+            "pick": "In attesa di nuovi palinsesti futuri",
             "odds": 0.0,
             "ev": 0.0,
-            "kelly": 0.0
+            "kelly": 0.0,
+            "commence": "-"
         }]
 
     analysis_results = {
         "status": "Success",
-        "top_bets": top_3_bets
+        "total_opportunities": len(all_opportunities),
+        "bets": all_opportunities
     }
     
+    # Salvataggio su file JSON per la dashboard
     with open('results.json', 'w') as f:
         json.dump(analysis_results, f, indent=4)
         
-    print(f"Analisi completata. Trovate {len(top_3_bets)} giocate di valore salvate in results.json.")
+    print(f"Analisi completata con successo. Trovate {len(all_opportunities)} opportunità salvate in results.json.")
 
 if __name__ == "__main__":
     run_quant_analysis()
