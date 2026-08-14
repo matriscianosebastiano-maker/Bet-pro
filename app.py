@@ -5,9 +5,9 @@ import google.generativeai as genai
 from datetime import datetime, timezone
 
 # --- CONFIGURAZIONE PAGINA ---
-st.set_page_config(page_title="Bet-Pro AI Engine", page_icon="🤖", layout="centered")
-st.title("🤖 Bet-Pro AI Engine")
-st.markdown("Analisi EV+ e intelligenza artificiale in tempo reale.")
+st.set_page_config(page_title="Bet-Pro AI Engine", page_icon="🎯", layout="wide")
+st.title("🎯 Bet-Pro AI Engine | Algoritmo EV+ & Kelly Criterion")
+st.markdown("Motore matematico avanzato: *Consensus De-Vigging, Line Shopping e Ottimizzazione Kelly.*")
 
 # --- CHIAVI API ---
 try:
@@ -19,31 +19,31 @@ except Exception:
     st.error("⚠️ Chiavi API non configurate correttamente nei Secrets di Streamlit.")
     st.stop()
 
-# --- MOTORE DI RICERCA DATI (Cache per non bruciare crediti) ---
+# --- MOTORE MATEMATICO AVANZATO ---
 @st.cache_data(ttl=600)
-def fetch_odds():
+def fetch_advanced_odds():
     recommendations = []
     
-    # Lista estesa e globale: copre Europa, Sud America, USA, Asia e vari sport (Garantisce match a qualsiasi ora)
+    # Palinsesto Globale Esteso
     target_sports = [
-        'soccer_italy_serie_a', 'soccer_epl', 'soccer_spain_la_liga', 
-        'soccer_germany_bundesliga', 'soccer_france_ligue_one',
+        'soccer_italy_serie_a', 'soccer_epl', 'soccer_spain_la_liga', 'soccer_germany_bundesliga', 
+        'soccer_france_ligue_one', 'soccer_uefa_champs_league', 'soccer_italy_serie_b',
         'soccer_usa_mls', 'soccer_brazil_campeonato', 'soccer_argentina_primera_division',
-        'soccer_mexico_ligamx', 'soccer_japan_j_league',
-        'tennis_atp', 'tennis_wta', 'baseball_mlb', 'basketball_wnba'
+        'tennis_atp', 'tennis_wta', 'basketball_nba', 'baseball_mlb'
     ]
     
-    progress_text = st.empty()
+    progress_bar = st.progress(0)
+    status_text = st.empty()
     
-    for sport in target_sports:
-        # Aggiorna l'utente su cosa sta scansionando
-        progress_text.text(f"🔍 Ricerca in corso: {sport.replace('_', ' ').upper()}...")
+    for i, sport in enumerate(target_sports):
+        status_text.text(f"📊 Analisi matematica in corso: {sport.replace('_', ' ').upper()}")
+        progress_bar.progress((i + 1) / len(target_sports))
         
         odds_url = f"https://api.the-odds-api.com/v4/sports/{sport}/odds/"
-        params = {'apiKey': ODDS_KEY, 'regions': 'eu,uk', 'markets': 'h2h', 'oddsFormat': 'decimal'}
+        params = {'apiKey': ODDS_KEY, 'regions': 'eu,uk', 'markets': 'h2h,totals', 'oddsFormat': 'decimal'}
         
         try:
-            res = requests.get(odds_url, params=params, timeout=5)
+            res = requests.get(odds_url, params=params, timeout=8)
             if res.status_code == 200:
                 events = res.json()
                 for event in events:
@@ -51,70 +51,141 @@ def fetch_odds():
                     bookmakers = event.get('bookmakers', [])
                     if not bookmakers: continue
                     
-                    markets = bookmakers[0].get('markets', [])
-                    if not markets: continue
-                    outcomes = markets[0].get('outcomes', [])
+                    # Raggruppa i mercati per tipo (h2h o totals)
+                    markets_dict = {}
+                    for bookie in bookmakers:
+                        for market in bookie.get('markets', []):
+                            m_key = market['key']
+                            if m_key not in markets_dict:
+                                markets_dict[m_key] = []
+                            markets_dict[m_key].append({'bookie': bookie['title'], 'outcomes': market['outcomes']})
                     
-                    if len(outcomes) < 2: continue
-                    prices = [float(o.get('price', 0)) for o in outcomes if float(o.get('price', 0)) > 1.05]
-                    if len(prices) < 2: continue
-                    
-                    margin = sum([1.0/p for p in prices])
-                    for o in outcomes:
-                        p = float(o.get('price', 0))
-                        if p <= 1.05: continue
-                        prob_real = round(((1.0/p) / margin) * 100, 1)
-                        ev = round(((p * (prob_real / 100)) - 1) * 100, 2)
+                    # Analizza ogni mercato
+                    for market_key, bookies_data in markets_dict.items():
+                        if len(bookies_data) < 2: continue # Servono almeno 2 bookies per fare media di mercato
                         
-                        # Filtro allargato: prende quote ottime e quote accettabili per non lasciare l'app vuota
-                        if ev > -2.0: 
-                            recommendations.append({
-                                "Match": f"{home} vs {away}",
-                                "Sport": sport.upper(),
-                                "Pronostico": o.get('name'),
-                                "Quota": p,
-                                "Prob.%": prob_real,
-                                "EV%": ev
-                            })
-        except Exception:
-            continue # Se un campionato fallisce o non ha quote, passa semplicemente al prossimo
+                        # Struttura per immagazzinare le quote per ogni esito
+                        outcomes_data = {}
+                        for bd in bookies_data:
+                            for outcome in bd['outcomes']:
+                                name = outcome.get('name')
+                                price = float(outcome.get('price', 0))
+                                if price <= 1.01: continue
+                                
+                                if name not in outcomes_data:
+                                    outcomes_data[name] = {'prices': [], 'max_price': 0, 'max_bookie': ''}
+                                
+                                outcomes_data[name]['prices'].append(price)
+                                if price > outcomes_data[name]['max_price']:
+                                    outcomes_data[name]['max_price'] = price
+                                    outcomes_data[name]['max_bookie'] = bd['bookie']
+                        
+                        # Calcolo Consensus True Probability (Media del mercato)
+                        avg_implied_probs = {}
+                        margin_sum = 0
+                        for name, data in outcomes_data.items():
+                            if not data['prices']: continue
+                            avg_price = sum(data['prices']) / len(data['prices'])
+                            implied = 1.0 / avg_price
+                            avg_implied_probs[name] = implied
+                            margin_sum += implied
+                        
+                        if margin_sum == 0: continue
+                        
+                        # Calcolo Valore ed Estrazione Pick
+                        for name, data in outcomes_data.items():
+                            if name not in avg_implied_probs: continue
+                            
+                            true_prob = avg_implied_probs[name] / margin_sum
+                            max_price = data['max_price']
+                            
+                            # Calcolo Expected Value (EV)
+                            ev = (max_price * true_prob) - 1
+                            
+                            # Filtro: teniamo tutto ciò che non è un disastro matematico (EV > -0.05) per garantire sempre opzioni
+                            if ev > -0.05: 
+                                # Calcolo Criterio di Kelly (Frazione di Stake)
+                                kelly_fraction = max(0, ((true_prob * max_price) - 1) / (max_price - 1))
+                                kelly_pct = round(kelly_fraction * 100, 2)
+                                
+                                recommendations.append({
+                                    "Sport": sport.upper(),
+                                    "Match": f"{home} vs {away}",
+                                    "Mercato": market_key.upper(),
+                                    "Selezione": name,
+                                    "Quota Max": max_price,
+                                    "Bookmaker": data['max_bookie'],
+                                    "Prob Reale": f"{round(true_prob * 100, 1)}%",
+                                    "EV": round(ev * 100, 2),
+                                    "Kelly Stake": f"{kelly_pct}%"
+                                })
+                                
+        except Exception as e:
+            continue
             
-    progress_text.empty() # Pulisce il testo a fine ricerca
+    progress_bar.empty()
+    status_text.empty()
     
-    # Ordina dal valore atteso più alto al più basso
-    recommendations.sort(key=lambda x: x['EV%'], reverse=True)
-    return recommendations[:15] # Mostra i top 15 eventi globali
+    # Ordinamento per EV decrescente
+    recommendations.sort(key=lambda x: x['EV'], reverse=True)
+    
+    # Rimuovi duplicati (stesso match, stessa selezione)
+    seen = set()
+    unique_recs = []
+    for r in recommendations:
+        identifier = f"{r['Match']}_{r['Selezione']}"
+        if identifier not in seen:
+            seen.add(identifier)
+            unique_recs.append(r)
+            
+    return unique_recs[:15] # Ritorna le 15 migliori assolute
 
-# --- AZIONE PRINCIPALE ---
-if st.button("🔄 Scansiona Palinsesto Globale e Genera Analisi AI", use_container_width=True):
-    with st.spinner("Avvio del motore di ricerca globale..."):
-        best_bets = fetch_odds()
+# --- UI PRINCIPALE ---
+if st.button("🚀 Avvia Motore Matematico e IA", use_container_width=True, type="primary"):
+    with st.spinner("Scansione globale, Line Shopping e De-vigging in corso..."):
+        best_bets = fetch_advanced_odds()
         
     if not best_bets:
-        st.warning("Nessuna quota interessante trovata in questo momento, neanche nei mercati internazionali. Riprova più tardi.")
+        st.warning("Mercato attualmente illeggibile. Riprova tra 30 minuti.")
     else:
-        st.success(f"Trovate {len(best_bets)} opportunità in giro per il mondo!")
+        top_pick = best_bets[0]
         
-        # Mostra la tabella dei dati
-        df = pd.DataFrame(best_bets)
+        # --- SEZIONE TOP PICK ---
+        st.markdown("---")
+        st.markdown("## 🏆 TOP PICK ASSOLUTA")
+        
+        # Metriche in colonna per un look professionale
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Match", top_pick['Match'], top_pick['Sport'])
+        col2.metric("Selezione & Quota", f"{top_pick['Selezione']} @ {top_pick['Quota Max']}", top_pick['Bookmaker'])
+        col3.metric("Valore Atteso (EV)", f"+{top_pick['EV']}%" if top_pick['EV'] > 0 else f"{top_pick['EV']}%", delta_color="normal")
+        col4.metric("Kelly Stake (Consigliato)", top_pick['Kelly Stake'])
+        
+        st.markdown("---")
+        
+        # --- TABELLA PALINSESTO COMPLETO ---
+        st.markdown("### 📋 Palinsesto Value Bets")
+        df = pd.DataFrame(best_bets[1:]) # Mostra tutte tranne la top pick che è già in alto
         st.dataframe(df, use_container_width=True, hide_index=True)
         
-        # --- IL SUPER PROMPT ---
-        with st.spinner("L'Intelligenza Artificiale sta scrivendo l'analisi strategica..."):
+        # --- ANALISI IA CON CONTESTO MATEMATICO ---
+        with st.spinner("L'IA sta elaborando la strategia sui dati calcolati..."):
             prompt = f"""
-            Agisci come un analista di betting sportivo professionista (tono serio, esperto, molto sintetico).
-            Il mio software matematico ha appena scansionato il mondo e ha estratto queste quote (ordinate per Valore Atteso EV):
-            {best_bets}
+            Agisci come un Data Scientist specializzato in scommesse sportive. 
+            Il mio algoritmo ha effettuato il de-vigging del mercato globale calcolando la probabilità reale, il valore atteso (EV) e lo stake tramite il criterio di Kelly.
             
-            Scrivi un'analisi di massimo 4-5 righe per l'utente. 
-            Indica quale tra questi match reputi il più solido in termini di rapporto rischio/rendimento, indipendentemente dallo sport.
-            Sconsiglia di giocare tutto in una singola multipla.
-            Non usare formattazioni eccessive.
+            Ecco la TOP PICK matematica in assoluto: {top_pick}
+            Ecco le altre alternative valide: {best_bets[1:5]}
+            
+            Scrivi un brief strategico (max 5 righe):
+            1. Sottolinea perché la Top Pick ha senso dal punto di vista probabilistico, menzionando i concetti di EV e Stake Kelly.
+            2. Fornisci un consiglio cinico su come gestire il bankroll evitando multiple.
+            Sii estremamente diretto e tecnico. Nessuna formattazione inutile.
             """
             
             try:
                 response = model.generate_content(prompt)
-                st.markdown("### 🧠 Analisi Strategica dell'IA")
+                st.markdown("### 🧠 Analisi Strategica dell'IA (Data-Driven)")
                 st.info(response.text)
             except Exception as e:
                 st.error("Errore nella generazione dell'analisi IA.")
