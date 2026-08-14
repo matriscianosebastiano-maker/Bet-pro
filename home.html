@@ -5,35 +5,51 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Bet-Pro Multi-Sport Engine</title>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #121212; color: #fff; padding: 15px; margin: 0; }
-        .container { max-width: 1100px; margin: auto; }
-        .card { background: #1e1e1e; padding: 15px; border-radius: 10px; border-left: 4px solid #00ffcc; margin-bottom: 20px; box-sizing: border-box; }
-        table { width: 100%; border-collapse: collapse; background: #222; }
-        th, td { padding: 10px; border-bottom: 1px solid #333; text-align: left; font-size: 0.85em; }
-        th { color: #00ffcc; background: #181818; }
-        .btn-add { background: #00ffcc; border: none; padding: 6px 12px; cursor: pointer; border-radius: 4px; font-weight: bold; color: #121212; }
-        .tag-SICURA { color: #00ff00; font-weight: bold; }
-        .tag-VALUE { color: #ffff00; font-weight: bold; }
-        .tag-BIG { color: #ff00ff; font-weight: bold; }
+        body { font-family: sans-serif; background: #0f0f0f; color: #fff; padding: 10px; }
+        .card { background: #1a1a1a; padding: 15px; border-radius: 12px; margin-bottom: 15px; border: 1px solid #333; }
+        .top-pick { border: 2px solid #00ffcc; background: linear-gradient(145deg, #1a2a2a, #1a1a1a); }
+        .btn-add { background: #00ffcc; border: none; padding: 8px 16px; border-radius: 6px; font-weight: bold; cursor: pointer; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>BET-PRO MULTI-SPORT ENGINE</h1>
-        <div id="status" style="color: #00ffcc; margin-bottom: 15px;">Caricamento analisi...</div>
-        
-        <div class="card">
-            <h3>Giocate Consigliate (Analisi Matematica)</h3>
-            <div style="overflow-x: auto;">
-                <table id="betsTable">
-                    <thead>
-                        <tr>
-                            <th>Sport</th>
-                            <th>Match</th>
-                            <th>Tipologia Giocata</th>
-                            <th>Quota</th>
-                            <th>Conf.%</th>
-                            <th>EV%</th>
+    <h1>BET-PRO ANALYZER</h1>
+    <div id="topSection"></div>
+    
+    <div class="card">
+        <h3>Altre Opportunità</h3>
+        <div id="listSection"></div>
+    </div>
+
+    <script>
+        fetch('results.json?t=' + Date.now())
+            .then(r => r.json())
+            .then(data => {
+                // RENDER TOP PICK
+                if(data.top_pick) {
+                    const t = data.top_pick;
+                    document.getElementById('topSection').innerHTML = `
+                        <div class="card top-pick">
+                            <h2 style="color:#00ffcc; margin-top:0;">🎯 TOP PICK: ${t.match}</h2>
+                            <p><strong>Pronostico:</strong> ${t.pick} @ ${t.odds}</p>
+                            <p>Probabilità calcolata: <strong>${t.prob}%</strong> | Rischio: <strong>${t.risk}</strong></p>
+                            <button class="btn-add" onclick="alert('Aggiunto!')">Aggiungi alla Schedina</button>
+                        </div>
+                    `;
+                }
+                
+                // RENDER LIST
+                let html = "";
+                data.recommendations.forEach(b => {
+                    html += `<div style="padding:10px; border-bottom:1px solid #333;">
+                        <strong>${b.match}</strong><br>
+                        ${b.pick} @ ${b.odds} <span style="color:#00ffcc;">(${b.risk})</span>
+                    </div>`;
+                });
+                document.getElementById('listSection').innerHTML = html;
+            });
+    </script>
+</body>
+</html>
                             <th>Insight</th>
                             <th>Azione</th>
                         </tr>
