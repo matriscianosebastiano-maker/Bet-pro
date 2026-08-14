@@ -5,6 +5,7 @@ from datetime import datetime
 
 ODDS_KEY = os.getenv('THE_ODDS_API_KEY')
 GLOBAL_SPORTS = [
+    "soccer_italy_coppa_italia",
     "soccer_italy_serie_a", 
     "soccer_epl", 
     "soccer_spain_la_liga", 
@@ -16,8 +17,14 @@ def run_engine():
     recommendations = []
     
     for sport in GLOBAL_SPORTS:
+        # Richiediamo sia il mercato 1X2 (h2h) che i totali gol (totals) per i valori laterali
         url = f"https://api.the-odds-api.com/v4/sports/{sport}/odds/"
-        params = {'apiKey': ODDS_KEY, 'regions': 'eu', 'markets': 'h2h', 'oddsFormat': 'decimal'}
+        params = {
+            'apiKey': ODDS_KEY, 
+            'regions': 'eu', 
+            'markets': 'h2h,totals', 
+            'oddsFormat': 'decimal'
+        }
         
         try:
             response = requests.get(url, params=params, timeout=10)
@@ -33,11 +40,13 @@ def run_engine():
                     bookie = bookmakers[0]
                     
                     for m in bookie.get('markets', []):
-                        if m.get('key') == 'h2h':
-                            outcomes = m.get('outcomes', [])
-                            if not outcomes:
-                                continue
-                            
+                        market_key = m.get('key')
+                        outcomes = m.get('outcomes', [])
+                        if not outcomes:
+                            continue
+                        
+                        # --- ANALISI MERCATO 1X2 (H2H) ---
+                        if market_key == 'h2h':
                             implied_probs = []
                             valid_outcomes = []
                             
@@ -47,14 +56,13 @@ def run_engine():
                                     implied_probs.append(1.0 / price)
                                     valid_outcomes.append((out.get('name'), price))
                             
-                            if not implied_probs:
+                            if not implied_probs or len(implied_probs) < 2:
                                 continue
                             
                             total_margin = sum(implied_probs)
                             if total_margin <= 0:
                                 continue
                             
-                            match_outcomes = []
                             for name, price in valid_outcomes:
                                 raw_imp = 1.0 / price
                                 true_prob = round((raw_imp / total_margin) * 100, 1)
@@ -67,43 +75,76 @@ def run_engine():
                                 else:
                                     label = "X - Pareggio"
                                     
-                                match_outcomes.append({
-                                    "pick": label,
-                                    "odds": price,
-                                    "prob": true_prob,
-                                    "ev": ev
-                                })
-                            
-                            if match_outcomes:
-                                best_option = max(match_outcomes, key=lambda x: x['ev'])
-                                
-                                if best_option['ev'] > 5.0:
+                                if ev > 5.0:
                                     risk = "Ottimo Valore (EV+)"
-                                elif best_option['ev'] > 0:
+                                elif ev > 0:
                                     risk = "Valore Moderato (EV+)"
                                 else:
                                     risk = "Standard / Sotto Margine"
 
                                 recommendations.append({
-                                    "id": f"{e.get('id')}_{best_option['pick']}".replace(" ", "_"),
+                                    "id": f"{e.get('id')}_{label}".replace(" ", "_"),
                                     "sport": sport.split('_')[0].upper(),
                                     "match": f"{home} vs {away}",
-                                    "pick": best_option['pick'],
-                                    "odds": best_option['odds'],
-                                    "prob": best_option['prob'],
-                                    "ev": best_option['ev'],
+                                    "market": "1X2 (Esito Finale)",
+                                    "pick": label,
+                                    "odds": price,
+                                    "prob": true_prob,
+                                    "ev": ev,
                                     "risk": risk,
-                                    # Flag per ordinamento: 1 se EV positivo (vantaggiosa), 0 altrimenti
-                                    "is_positive": 1 if best_option['ev'] > 0 else 0,
-                                    "score": best_option['ev']
+                                    "is_positive": 1 if ev > 0 else 0,
+                                    "score": ev
                                 })
+
+                        # --- ANALISI MERCATO TOTALS (Valori Laterali Over/Under 2.5) ---
+                        elif market_key == 'totals':
+                            # Filtriamo solitamente la linea standard 2.5 gol
+                            total_outcomes = [o for o in outcomes if float(o.get('point', 2.5)) == 2.5]
+                            if len(total_outcomes) == 2:
+                                implied_probs = []
+                                valid_totals = []
+                                
+                                for out in total_outcomes:
+                                    price = float(out.get('price', 0))
+                                    if price > 1.05:
+                                        implied_probs.append(1.0 / price)
+                                        valid_totals.append((out.get('name'), price))
+                                
+                                if len(implied_probs) == 2:
+                                    total_margin = sum(implied_probs)
+                                    if total_margin > 0:
+                                        for name, price in valid_totals:
+                                            raw_imp = 1.0 / price
+                                            true_prob = round((raw_imp / total_margin) * 100, 1)
+                                            ev = round(((price * (true_prob / 100)) - 1) * 100, 2)
+                                            
+                                            label = f"Over 2.5" if name.lower() == 'over' else f"Under 2.5"
+                                            
+                                            if ev > 5.0:
+                                                risk = "Ottimo Valore (EV+)"
+                                            elif ev > 0:
+                                                risk = "Valore Moderato (EV+)"
+                                            else:
+                                                risk = "Standard / Sotto Margine"
+
+                                            recommendations.append({
+                                                "id": f"{e.get('id')}_{label}".replace(" ", "_"),
+                                                "sport": sport.split('_')[0].upper(),
+                                                "match": f"{home} vs {away}",
+                                                "market": "Under/Over 2.5 (Valore Laterale)",
+                                                "pick": label,
+                                                "odds": price,
+                                                "prob": true_prob,
+                                                "ev": ev,
+                                                "risk": risk,
+                                                "is_positive": 1 if ev > 0 else 0,
+                                                "score": ev
+                                            })
         except Exception as ex:
             print(f"Errore {sport}: {ex}")
             continue
     
-    # Ordinamento strategico: 
-    # 1. Prima le giocate con EV positivo (vantaggiose)
-    # 2. A parità di categoria, ordinate per Expected Value più alto
+    # Ordinamento strategico: prima le giocate con EV positivo, ordinate per valore decrescente
     recommendations.sort(key=lambda x: (x['is_positive'], x['score']), reverse=True)
     
     top_pick = recommendations[0] if recommendations else None
@@ -111,13 +152,12 @@ def run_engine():
     output = {
         "last_update": datetime.now().strftime("%d/%m/%Y %H:%M"),
         "top_pick": top_pick,
-        "recommendations": recommendations[:20]
+        "recommendations": recommendations[:25]
     }
     
     with open('results.json', 'w', encoding='utf-8') as f:
         json.dump(output, f, ensure_ascii=False, indent=4)
-    print("Analisi statistica ordinata completata.")
+    print("Analisi multi-mercato (1X2 + Totals) completata con successo.")
 
 if __name__ == "__main__":
     run_engine()
-    
