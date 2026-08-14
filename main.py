@@ -31,17 +31,35 @@ def run_engine():
                         continue
                     
                     bookie = bookmakers[0]
-                    match_outcomes = []
                     
                     for m in bookie.get('markets', []):
                         if m.get('key') == 'h2h':
-                            for out in m.get('outcomes', []):
-                                name = out.get('name')
+                            outcomes = m.get('outcomes', [])
+                            if not outcomes:
+                                continue
+                            
+                            implied_probs = []
+                            valid_outcomes = []
+                            
+                            for out in outcomes:
                                 price = float(out.get('price', 0))
-                                if price <= 1.05:
-                                    continue
+                                if price > 1.05:
+                                    implied_probs.append(1.0 / price)
+                                    valid_outcomes.append((out.get('name'), price))
+                            
+                            if not implied_probs:
+                                continue
+                            
+                            total_margin = sum(implied_probs)
+                            if total_margin <= 0:
+                                continue
+                            
+                            match_outcomes = []
+                            for name, price in valid_outcomes:
+                                raw_imp = 1.0 / price
+                                true_prob = round((raw_imp / total_margin) * 100, 1)
+                                ev = round(((price * (true_prob / 100)) - 1) * 100, 2)
                                 
-                                # Assegnazione esplicita del segno e tipo di giocata
                                 if name == home:
                                     label = f"1 - Vittoria Casa ({home})"
                                 elif name == away:
@@ -49,53 +67,56 @@ def run_engine():
                                 else:
                                     label = "X - Pareggio"
                                     
-                                prob = round((1 / price) * 100, 1)
-                                ev = round((prob * 1.05) - 100, 2)
-                                
                                 match_outcomes.append({
                                     "pick": label,
                                     "odds": price,
-                                    "prob": prob,
+                                    "prob": true_prob,
                                     "ev": ev
                                 })
-                    
-                    if match_outcomes:
-                        best_option = max(match_outcomes, key=lambda x: x['ev'])
-                        
-                        if best_option['prob'] > 55:
-                            risk = "Basso (Consigliato)"
-                        elif best_option['prob'] > 35:
-                            risk = "Medio (Buon Valore)"
-                        else:
-                            risk = "Alto (Speculativo)"
+                            
+                            if match_outcomes:
+                                best_option = max(match_outcomes, key=lambda x: x['ev'])
+                                
+                                if best_option['ev'] > 5.0:
+                                    risk = "Ottimo Valore (EV+)"
+                                elif best_option['ev'] > 0:
+                                    risk = "Valore Moderato (EV+)"
+                                else:
+                                    risk = "Standard / Sotto Margine"
 
-                        recommendations.append({
-                            "id": f"{e.get('id')}_{best_option['pick']}".replace(" ", "_"),
-                            "sport": sport.split('_')[0].upper(),
-                            "match": f"{home} vs {away}",
-                            "pick": best_option['pick'],
-                            "odds": best_option['odds'],
-                            "prob": best_option['prob'],
-                            "ev": best_option['ev'],
-                            "risk": risk,
-                            "score": (best_option['prob'] * 0.6) + (best_option['ev'] * 0.4)
-                        })
+                                recommendations.append({
+                                    "id": f"{e.get('id')}_{best_option['pick']}".replace(" ", "_"),
+                                    "sport": sport.split('_')[0].upper(),
+                                    "match": f"{home} vs {away}",
+                                    "pick": best_option['pick'],
+                                    "odds": best_option['odds'],
+                                    "prob": best_option['prob'],
+                                    "ev": best_option['ev'],
+                                    "risk": risk,
+                                    # Flag per ordinamento: 1 se EV positivo (vantaggiosa), 0 altrimenti
+                                    "is_positive": 1 if best_option['ev'] > 0 else 0,
+                                    "score": best_option['ev']
+                                })
         except Exception as ex:
             print(f"Errore {sport}: {ex}")
             continue
     
-    recommendations.sort(key=lambda x: x['score'], reverse=True)
+    # Ordinamento strategico: 
+    # 1. Prima le giocate con EV positivo (vantaggiose)
+    # 2. A parità di categoria, ordinate per Expected Value più alto
+    recommendations.sort(key=lambda x: (x['is_positive'], x['score']), reverse=True)
+    
     top_pick = recommendations[0] if recommendations else None
     
     output = {
         "last_update": datetime.now().strftime("%d/%m/%Y %H:%M"),
         "top_pick": top_pick,
-        "recommendations": recommendations[:15]
+        "recommendations": recommendations[:20]
     }
     
     with open('results.json', 'w', encoding='utf-8') as f:
         json.dump(output, f, ensure_ascii=False, indent=4)
-    print("Analisi completata con successo.")
+    print("Analisi statistica ordinata completata.")
 
 if __name__ == "__main__":
     run_engine()
