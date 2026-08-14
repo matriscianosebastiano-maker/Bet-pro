@@ -30,10 +30,11 @@ jobs:
         run: |
           python main.py
 
-      - name: Commit and push results.json
+   - name: Commit and push results.json
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git pull origin main --rebase || true
           git add results.json
           git commit -m "Aggiornamento automatico dati (Cron 8h)" || exit 0
           git push
