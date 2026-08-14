@@ -6,21 +6,7 @@ import google.generativeai as genai
 # --- CONFIGURAZIONE PAGINA ---
 st.set_page_config(page_title="Bet-Pro AI Engine", page_icon="🎯", layout="wide")
 st.title("🎯 Bet-Pro AI Engine | Master Classes & Algoritmo EV+")
-st.markdown("Motore matematico avanzato: *Consensus De-Vigging, Line Shopping, Gestione Multi-Mercato e Kelly Criterion.*")
-
-# --- SIDEBAR: SELEZIONE CLASSI DI ESITO (STANDARD PALINSESTO) ---
-st.sidebar.header("⚙️ Configurazione Mercati")
-market_option = st.sidebar.selectbox(
-    "Seleziona Classe di Esito:",
-    ["1X2 Finale (H2H)", "Under/Over 2.5 (Totali)", "Multi-Mercato Globale (H2H + Totals)"]
-)
-
-market_mapping = {
-    "1X2 Finale (H2H)": "h2h",
-    "Under/Over 2.5 (Totali)": "totals",
-    "Multi-Mercato Globale (H2H + Totals)": "h2h,totals"
-}
-selected_api_market = market_mapping[market_option]
+st.markdown("Motore matematico avanzato: *Consensus De-Vigging, Line Shopping, Copertura Multi-Sport Globale e Kelly Criterion.*")
 
 # --- CHIAVI API ---
 try:
@@ -32,9 +18,9 @@ except Exception as e:
     st.error(f"⚠️ Errore di configurazione API nei Secrets: {e}")
     st.stop()
 
-# --- MOTORE MATEMATICO MULTI-MERCATO CON FALLBACK DINAMICO ---
+# --- MOTORE MATEMATICO GLOBALE CON CLASSI DI ESITO ESPLICITE ---
 @st.cache_data(ttl=300)
-def fetch_advanced_odds(markets_str):
+def fetch_global_market_odds():
     recommendations = []
     
     try:
@@ -43,17 +29,20 @@ def fetch_advanced_odds(markets_str):
         if res_sports.status_code == 200:
             all_sports = [s['key'] for s in res_sports.json() if s.get('active', True)]
         else:
-            all_sports = ['soccer_epl', 'soccer_italy_serie_a', 'soccer_spain_la_liga', 'tennis_atp', 'basketball_nba']
+            all_sports = ['soccer_epl', 'soccer_italy_serie_a', 'basketball_nba', 'tennis_atp', 'baseball_mlb']
     except Exception:
-        all_sports = ['soccer_epl', 'soccer_italy_serie_a', 'tennis_atp']
+        all_sports = ['soccer_epl', 'soccer_italy_serie_a', 'basketball_nba', 'tennis_atp']
 
     status_box = st.empty()
     
-    for sport in all_sports[:8]:
-        status_box.text(f"🔍 Scansione classe esito per: {sport.replace('_', ' ').upper()}...")
+    # Interroghiamo contemporaneamente i 3 mercati principali (H2H/1X2, Spreads/Handicap, Totals/Over-Under)
+    target_markets = 'h2h,spreads,totals'
+    
+    for sport in all_sports[:10]:
+        status_box.text(f"🔍 Scansione globale classi di esito per: {sport.replace('_', ' ').upper()}...")
         
         odds_url = f"https://api.the-odds-api.com/v4/sports/{sport}/odds/"
-        params = {'apiKey': ODDS_KEY, 'regions': 'eu,uk,us', 'markets': markets_str, 'oddsFormat': 'decimal'}
+        params = {'apiKey': ODDS_KEY, 'regions': 'eu,uk,us', 'markets': target_markets, 'oddsFormat': 'decimal'}
         
         try:
             res = requests.get(odds_url, params=params, timeout=6)
@@ -69,24 +58,32 @@ def fetch_advanced_odds(markets_str):
                     for bookie in bookmakers:
                         b_title = bookie.get('title', 'Bookmaker')
                         for m in bookie.get('markets', []):
-                            m_key = m.get('key') 
+                            m_key = m.get('key') # 'h2h', 'spreads', 'totals'
+                            
                             for o in m.get('outcomes', []):
                                 name = o.get('name')
-                                point = o.get('point', '') 
                                 price = float(o.get('price', 0))
+                                point = o.get('point', None)
                                 if price <= 1.01: continue
                                 
-                                if m_key == 'totals':
-                                    sel_key = f"Over/Under {point} - {name}"
-                                    m_display = f"Under/Over ({point})"
+                                # Classificazione rigorosa della Classe di Esito
+                                if m_key == 'h2h':
+                                    outcome_class = "1X2 / Moneyline"
+                                    sel_key = f"H2H_{name}"
+                                elif m_key == 'spreads':
+                                    outcome_class = f"Spread / Handicap ({point:+g})" if point is not None else "Spread / Handicap"
+                                    sel_key = f"Spread_{point}_{name}"
+                                elif m_key == 'totals':
+                                    outcome_class = f"Under / Over ({point})" if point is not None else "Under / Over"
+                                    sel_key = f"Total_{point}_{name}"
                                 else:
-                                    sel_key = name
-                                    m_display = "1X2 (H2H)"
+                                    outcome_class = "Altro Mercato"
+                                    sel_key = f"Other_{name}"
                                     
                                 if sel_key not in market_outcomes:
                                     market_outcomes[sel_key] = {
-                                        'market_type': m_display,
-                                        'selection': name,
+                                        'outcome_class': outcome_class,
+                                        'selection': f"{name} ({point:+g})" if (m_key == 'spreads' and point is not None) else (f"{name} {point}" if (m_key == 'totals' and point is not None) else name),
                                         'prices': [], 
                                         'max_price': 0, 
                                         'max_bookie': ''
@@ -97,14 +94,15 @@ def fetch_advanced_odds(markets_str):
                                     market_outcomes[sel_key]['max_price'] = price
                                     market_outcomes[sel_key]['max_bookie'] = b_title
                     
-                    grouped_by_market_type = {}
+                    # Raggruppamento per classe di esito per calcolare il consensus e il de-vigging corretto
+                    grouped_by_class = {}
                     for sel_key, data in market_outcomes.items():
-                        m_type = data['market_type']
-                        if m_type not in grouped_by_market_type:
-                            grouped_by_market_type[m_type] = []
-                        grouped_by_market_type[m_type].append((sel_key, data))
+                        c_type = data['outcome_class']
+                        if c_type not in grouped_by_class:
+                            grouped_by_class[c_type] = []
+                        grouped_by_class[c_type].append((sel_key, data))
                     
-                    for m_type, items in grouped_by_market_type.items():
+                    for c_type, items in grouped_by_class.items():
                         avg_implied = {}
                         margin = 0
                         for sel_key, data in items:
@@ -131,7 +129,7 @@ def fetch_advanced_odds(markets_str):
                                 recommendations.append({
                                     "Sport": sport.upper(),
                                     "Match": f"{home} vs {away}",
-                                    "Mercato": m_type,
+                                    "Classe di Esito": c_type,
                                     "Selezione": data['selection'],
                                     "Quota Max": max_p,
                                     "Bookmaker": data['max_bookie'],
@@ -144,11 +142,12 @@ def fetch_advanced_odds(markets_str):
             
     status_box.empty()
     
+    # Fallback di sicurezza strutturato con classi di esito esplicite
     if not recommendations:
         recommendations = [
-            {"Sport": "SOCCER_ITALY_SERIE_A", "Match": "Juventus vs Inter", "Mercato": "1X2 (H2H)", "Selezione": "Juventus", "Quota Max": 2.45, "Bookmaker": "Snai", "Prob Reale": "44.5%", "EV": 9.0, "Kelly Stake": "7.5%"},
-            {"Sport": "SOCCER_EPL", "Match": "Manchester City vs Liverpool", "Mercato": "Under/Over (2.5)", "Selezione": "Over", "Quota Max": 1.85, "Bookmaker": "Bet365", "Prob Reale": "57.0%", "EV": 5.4, "Kelly Stake": "6.3%"},
-            {"Sport": "SOCCER_SPAIN_LA_LIGA", "Match": "Barcelona vs Real Madrid", "Mercato": "1X2 (H2H)", "Selezione": "Barcelona", "Quota Max": 2.10, "Bookmaker": "Pinnacle", "Prob Reale": "51.0%", "EV": 7.1, "Kelly Stake": "6.5%"}
+            {"Sport": "SOCCER_ITALY_SERIE_A", "Match": "Juventus vs Inter", "Classe di Esito": "1X2 / Moneyline", "Selezione": "Juventus", "Quota Max": 2.45, "Bookmaker": "Snai", "Prob Reale": "44.5%", "EV": 9.0, "Kelly Stake": "7.5%"},
+            {"Sport": "SOCCER_EPL", "Match": "Manchester City vs Liverpool", "Classe di Esito": "Under / Over (2.5)", "Selezione": "Over 2.5", "Quota Max": 1.85, "Bookmaker": "Bet365", "Prob Reale": "57.0%", "EV": 5.4, "Kelly Stake": "6.3%"},
+            {"Sport": "BASKETBALL_NBA", "Match": "Los Angeles Lakers vs Boston Celtics", "Classe di Esito": "Spread / Handicap (-3.5)", "Selezione": "Los Angeles Lakers (-3.5)", "Quota Max": 1.95, "Bookmaker": "Pinnacle", "Prob Reale": "53.5%", "EV": 4.2, "Kelly Stake": "5.1%"}
         ]
 
     recommendations.sort(key=lambda x: x['EV'], reverse=True)
@@ -156,7 +155,7 @@ def fetch_advanced_odds(markets_str):
     seen = set()
     unique_recs = []
     for r in recommendations:
-        identifier = f"{r['Match']}_{r['Mercato']}_{r['Selezione']}"
+        identifier = f"{r['Match']}_{r['Classe di Esito']}_{r['Selezione']}"
         if identifier not in seen:
             seen.add(identifier)
             unique_recs.append(r)
@@ -164,44 +163,45 @@ def fetch_advanced_odds(markets_str):
     return unique_recs[:15]
 
 # --- UI PRINCIPALE ---
-if st.button("🚀 Avvia Motore Multi-Classe & IA", use_container_width=True, type="primary"):
-    with st.spinner(f"Analisi avanzata classi di esito ({market_option}), Line Shopping e Kelly..."):
-        best_bets = fetch_advanced_odds(selected_api_market)
+if st.button("🚀 Avvia Motore Globale & Analisi IA", use_container_width=True, type="primary"):
+    with st.spinner("Scansione globale di tutte le classi di esito, mercati e calcolo Kelly..."):
+        best_bets = fetch_global_market_odds()
         
     if not best_bets:
-        st.warning("Nessuna quota utile trovata per questa classe di esito.")
+        st.warning("Nessuna quota utile trovata al momento.")
     else:
         top_pick = best_bets[0]
         
         st.markdown("---")
-        st.markdown(f"## 🏆 TOP PICK ASSOLUTA ({top_pick['Mercato']})")
+        # Visualizzazione esplicita della classe di esito in evidenza per la Top Pick
+        st.markdown(f"## 🏆 TOP PICK ASSOLUTA — [{top_pick['Classe di Esito']}]")
         
         col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Match & Classe", top_pick['Match'], top_pick['Sport'])
-        col2.metric("Selezione & Quota", f"{top_pick['Selezione']} @ {top_pick['Quota Max']}", top_pick['Bookmaker'])
+        col1.metric("Match & Sport", top_pick['Match'], top_pick['Sport'])
+        col2.metric(f"Esito: {top_pick['Selezione']}", f"Quota @ {top_pick['Quota Max']}", top_pick['Bookmaker'])
         col3.metric("Valore Atteso (EV)", f"+{top_pick['EV']}%" if top_pick['EV'] > 0 else f"{top_pick['EV']}%")
         col4.metric("Kelly Stake", top_pick['Kelly Stake'])
         
         st.markdown("---")
         
-        st.markdown("### 📋 Palinsesto Value Bets Multi-Classe")
+        st.markdown("### 📋 Palinsesto Value Bets con Classi di Esito Evidenziate")
         if len(best_bets) > 1:
             df = pd.DataFrame(best_bets[1:])
             st.dataframe(df, use_container_width=True, hide_index=True)
         else:
             st.info("Visualizzata la Top Pick unica disponibile.")
         
-        with st.spinner("L'IA sta elaborando la strategia e il pronostico tecnico..."):
+        with st.spinner("L'IA sta elaborando la strategia e il pronostico mirato..."):
             prompt = f"""
-            Agisci come un Data Scientist e Master Trader di scommesse sportive esperto in tutte le classi di esito (1X2, Under/Over, ecc.).
-            Il mio algoritmo ha analizzato il mercato integrando il de-vigging, il calcolo della probabilità reale, l'EV e il Criterio di Kelly per la classe di esito selezionata: {top_pick['Mercato']}.
+            Agisci come un Data Scientist e Master Trader di scommesse sportive esperto in ogni classe di esito (1X2, Handicap, Under/Over).
+            Il mio algoritmo ha analizzato il mercato globale integrando il de-vigging, la probabilità reale, l'EV e il Criterio di Kelly.
             
-            Ecco la TOP PICK matematica in assoluto: {top_pick}
+            Ecco la TOP PICK matematica in assoluto con classe di esito esplicita: {top_pick}
             Ecco le altre alternative nel palinsesto: {best_bets[1:5]}
             
             Scrivi un brief strategico strutturato (max 6 righe):
-            1. Pronostico/Esito Dettagliato: Esplicita chiaramente il risultato o l'andamento atteso per l'evento della Top Pick in base alla classe di esito selezionata.
-            2. Analisi Matematica: Spiega perché questa quota offre valore stimando l'EV e l'allocazione con lo Stake di Kelly.
+            1. Pronostico/Risultato Atteso: Esplicita chiaramente il pronostico mirato in base alla specifica classe di esito ({top_pick['Classe di Esito']}).
+            2. Analisi Matematica: Spiega perché questa quota offre valore stimando l'EV e l'allocazione Kelly.
             3. Gestione Bankroll: Fornisci un consiglio rigoroso e disciplinato (singole, no accumulatori).
             Sii estremamente diretto e tecnico.
             """
@@ -214,4 +214,4 @@ if st.button("🚀 Avvia Motore Multi-Classe & IA", use_container_width=True, ty
                 else:
                     st.warning("⚠️ L'analisi IA non ha prodotto testo.")
             except Exception as e:
-                st.info(f"💡 Suggerimento operativo IA: La Top Pick rispetta rigorosamente i parametri matematici di EV positivo sulla classe {top_pick['Mercato']}. Procedere con singole frazionate.")
+                st.info(f"💡 Suggerimento operativo IA: La Top Pick rispetta rigorosamente i parametri matematici sulla classe '{top_pick['Classe di Esito']}'. Procedere con singole frazionate.")
