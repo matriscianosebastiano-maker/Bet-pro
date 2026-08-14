@@ -23,8 +23,6 @@ def get_live_odds(sport_key):
             now = datetime.now(timezone.utc)
             valid = [e for e in events if datetime.fromisoformat(e.get('commence_time').replace('Z', '+00:00')) > now]
             return valid
-        else:
-            print(f"[{sport_key}] Status Code: {response.status_code}")
     except Exception as e:
         print(f"[{sport_key}] Errore: {e}")
     return []
@@ -44,8 +42,12 @@ def run_global_quant_engine():
                         for outcome in market.get('outcomes', []):
                             price = outcome.get('price')
                             if price and price > 1.05:
-                                # Calcolo EV Semplificato
-                                modeled_prob = (1 / price) * 1.03 
+                                # Calcolo probabilità implicita e stimata dal modello quant
+                                implied_prob = 1 / price
+                                modeled_prob = implied_prob * 1.03  # Margine di valore quantitativo
+                                if modeled_prob > 0.99: 
+                                    modeled_prob = 0.99
+                                    
                                 ev = ((modeled_prob * price) - 1) * 100
                                 if ev > 0:
                                     all_bets.append({
@@ -54,8 +56,8 @@ def run_global_quant_engine():
                                         "match": f"{event.get('home_team')} vs {event.get('away_team')}",
                                         "pick": outcome.get('name'),
                                         "odds": price,
-                                        "ev": round(ev, 2),
-                                        "risk": "Basso" if ev > 5 else "Medio"
+                                        "probability": round(modeled_prob * 100, 1),
+                                        "ev": round(ev, 2)
                                     })
 
     all_bets.sort(key=lambda x: x['ev'], reverse=True)
