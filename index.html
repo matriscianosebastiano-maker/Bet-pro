@@ -2,157 +2,64 @@
 <html lang="it">
 <head>
     <meta charset="UTF-8">
-    <title>Bet-Pro Quant Engine & Schedina Simulator</title>
+    <title>Bet-Pro Engine</title>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #121212; color: #e0e0e0; margin: 0; padding: 20px; }
-        .container { max-width: 1400px; margin: auto; display: flex; gap: 20px; flex-wrap: wrap; }
-        .main-content { flex: 2; min-width: 700px; }
-        .sidebar { flex: 1; min-width: 320px; background: #1e1e1e; padding: 20px; border-radius: 10px; border-top: 4px solid #00ffcc; height: fit-content; position: sticky; top: 20px; }
+        body { font-family: sans-serif; background: #121212; color: #fff; padding: 20px; }
+        .container { max-width: 1200px; margin: auto; }
         .card { background: #1e1e1e; padding: 20px; border-radius: 10px; border-left: 4px solid #00ffcc; margin-bottom: 20px; }
         table { width: 100%; border-collapse: collapse; background: #222; }
-        th, td { padding: 12px; border-bottom: 1px solid #333; text-align: left; font-size: 0.9em; }
-        th { color: #00ffcc; }
-        #lastUpdate { color: #888; font-size: 0.85em; margin-bottom: 15px; }
-        .btn-add { background: #00ffcc; color: #121212; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-weight: bold; }
-        .btn-add:hover { background: #00ccaa; }
-        .slip-item { background: #2a2a2a; padding: 10px; border-radius: 6px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
-        .slip-item button { background: #ff4444; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; }
-        .input-stake { width: 100%; padding: 10px; background: #2a2a2a; border: 1px solid #444; color: #fff; border-radius: 5px; margin-top: 10px; box-sizing: border-box; }
-        .summary-box { margin-top: 15px; border-top: 1px solid #333; padding-top: 15px; }
+        th, td { padding: 12px; border-bottom: 1px solid #333; text-align: left; }
+        .btn-add { background: #00ffcc; border: none; padding: 5px 10px; cursor: pointer; border-radius: 4px; }
+        .sidebar { background: #1e1e1e; padding: 20px; border-radius: 10px; margin-top: 20px; }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="main-content">
-            <h1>BET-PRO QUANT ENGINE</h1>
-            <div id="lastUpdate">Caricamento stato...</div>
-            
-            <div class="card">
-                <h3>🔥 Opportunità di Valore & Probabilità</h3>
-                <table id="betsTable">
-                    <thead>
-                        <tr>
-                            <th>Sport</th>
-                            <th>Evento</th>
-                            <th>Pronostico (Pick)</th>
-                            <th>Probabilità</th>
-                            <th>Quota</th>
-                            <th>EV%</th>
-                            <th>Azione</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr><td colspan="7" style="text-align:center; color:#888;">Caricamento dati in corso...</td></tr>
-                    </tbody>
-                </table>
-            </div>
+        <h1>BET-PRO ENGINE</h1>
+        <div id="status" style="color: #00ffcc;">Caricamento in corso...</div>
+        <div class="card">
+            <table id="betsTable">
+                <thead><tr><th>Sport</th><th>Match</th><th>Pick</th><th>Prob %</th><th>Quota</th><th>EV%</th><th>Azioni</th></tr></thead>
+                <tbody></tbody>
+            </table>
         </div>
-
         <div class="sidebar">
-            <h3>🧮 Simulatore Schedina</h3>
-            <div id="slipItems" style="max-height: 350px; overflow-y: auto; margin-top: 15px;">
-                <p style="color: #777; font-size: 0.9em;">Clicca "Aggiungi" sulle partite per comporre la tua schedina.</p>
-            </div>
-            <div class="summary-box">
-                <p><strong>Quota Totale:</strong> <span id="totalOdds" style="color:#00ffcc; font-size: 1.2em;">1.00</span></p>
-                <label for="stake">Importo puntata (€):</label>
-                <input type="number" id="stake" class="input-stake" value="10" min="1" oninput="updateCalculation()">
-                <p style="margin-top: 15px;"><strong>Vincita Potenziale:</strong> <span id="potentialWin" style="color:#00ffcc; font-size: 1.3em; font-weight: bold;">0.00 €</span></p>
-            </div>
+            <h3>Schedina</h3>
+            <div id="slipItems">Nessuna selezione.</div>
+            <p><strong>Totale Quota:</strong> <span id="totalOdds">1.00</span></p>
+            <input type="number" id="stake" value="10" oninput="updateCalculation()"> €
+            <p><strong>Vincita:</strong> <span id="potentialWin">0.00</span> €</p>
         </div>
     </div>
-
     <script>
-        let allBetsData = [];
-        let selectedBets = [];
+        let allBets = [];
+        let selected = [];
 
-        const timestamp = new Date().getTime();
-        const jsonUrl = 'https://matriscianosebastiano-maker.github.io/Bet-pro/results.json?t=' + timestamp;
-
-        fetch(jsonUrl)
-            .then(res => {
-                if (!res.ok) throw new Error("File JSON non trovato (404)");
-                return res.json();
-            })
+        fetch('results.json?t=' + new Date().getTime())
+            .then(r => r.json())
             .then(data => {
-                document.getElementById('lastUpdate').innerText = "Ultimo aggiornamento server: " + (data.last_update || "N/D");
-                allBetsData = data.recommendations || [];
-                const tbody = document.querySelector("#betsTable tbody");
-                tbody.innerHTML = ""; 
+                document.getElementById('status').innerText = "Ultimo aggiornamento: " + data.last_update;
+                allBets = data.recommendations;
+                let tbody = document.querySelector("#betsTable tbody");
+                allBets.forEach(b => {
+                    tbody.innerHTML += `<tr><td>${b.sport}</td><td>${b.match}</td><td>${b.pick}</td><td>${b.probability}%</td><td>${b.odds}</td><td>${b.ev}%</td><td><button class="btn-add" onclick="add('${b.id}')">Aggiungi</button></td></tr>`;
+                });
+            }).catch(e => document.getElementById('status').innerText = "Errore: " + e.message);
 
-                if (allBetsData.length > 0) {
-                    allBetsData.forEach((b) => {
-                        tbody.innerHTML += `<tr>
-                            <td>${b.sport}</td>
-                            <td>${b.match}</td>
-                            <td style="font-weight:bold; color:#fff;">${b.pick}</td>
-                            <td style="color:#00ffcc;">${b.probability}%</td>
-                            <td style="font-weight:bold;">${b.odds}</td>
-                            <td style="color:#00ffcc;">+${b.ev}%</td>
-                            <td><button class="btn-add" onclick="addToSlip('${b.id}')">Aggiungi</button></td>
-                        </tr>`;
-                    });
-                } else {
-                    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#ffcc00;">Nessuna quota di valore trovata al momento.</td></tr>`;
-                }
-            })
-            .catch(err => {
-                document.getElementById('lastUpdate').innerText = "Errore: " + err.message;
-                console.error(err);
-            });
-
-        function addToSlip(id) {
-            const bet = allBetsData.find(b => b.id === id);
-            if (!bet) return;
-            if (selectedBets.some(b => b.id === id)) return;
-
-            selectedBets.push(bet);
-            renderSlip();
-        }
-
-        function removeFromSlip(id) {
-            selectedBets = selectedBets.filter(b => b.id !== id);
+        function add(id) {
+            if(!selected.find(x => x.id === id)) selected.push(allBets.find(x => x.id === id));
             renderSlip();
         }
 
         function renderSlip() {
-            const slipContainer = document.getElementById('slipItems');
-            if (selectedBets.length === 0) {
-                slipContainer.innerHTML = `<p style="color: #777; font-size: 0.9em;">Clicca "Aggiungi" sulle partite per comporre la tua schedina.</p>`;
-                document.getElementById('totalOdds').innerText = "1.00";
-                document.getElementById('potentialWin').innerText = "0.00 €";
-                return;
-            }
-
-            slipContainer.innerHTML = "";
-            selectedBets.forEach(b => {
-                slipContainer.innerHTML += `
-                    <div class="slip-item">
-                        <div>
-                            <div style="font-size:0.85em; color:#aaa;">${b.match}</div>
-                            <div style="font-weight:bold; color:#fff;">Pick: ${b.pick} (${b.odds})</div>
-                        </div>
-                        <button onclick="removeFromSlip('${b.id}')">X</button>
-                    </div>
-                `;
-            });
-
+            document.getElementById('slipItems').innerHTML = selected.map(x => `<div>${x.match} (${x.odds})</div>`).join('');
             updateCalculation();
         }
 
         function updateCalculation() {
-            if (selectedBets.length === 0) {
-                document.getElementById('totalOdds').innerText = "1.00";
-                document.getElementById('potentialWin').innerText = "0.00 €";
-                return;
-            }
-
-            let totalOdds = selectedBets.reduce((acc, b) => acc * b.odds, 1);
-            let stake = parseFloat(document.getElementById('stake').value) || 0;
-            let potentialWin = totalOdds * stake;
-
-            document.getElementById('totalOdds').innerText = totalOdds.toFixed(2);
-            document.getElementById('potentialWin').innerText = potentialWin.toFixed(2) + " €";
+            let total = selected.reduce((acc, b) => acc * b.odds, 1);
+            document.getElementById('totalOdds').innerText = total.toFixed(2);
+            document.getElementById('potentialWin').innerText = (total * document.getElementById('stake').value).toFixed(2);
         }
     </script>
 </body>
