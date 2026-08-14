@@ -30,25 +30,39 @@
     </div>
 
     <script>
-        // Timestamp anti-cache per forzare il caricamento dei dati freschi
+        const statusEl = document.getElementById('lastUpdate');
+        statusEl.innerText = "Tentativo di caricamento in corso...";
+
         const timestamp = new Date().getTime();
-        fetch('results.json?t=' + timestamp)
-            .then(res => res.json())
-            .then(data => {
-                document.getElementById('lastUpdate').innerText = "Ultimo aggiornamento server: " + data.last_update;
-                const tbody = document.querySelector("#betsTable tbody");
-                tbody.innerHTML = ""; // Pulisce la tabella prima di riempirla
-                data.recommendations.forEach(b => {
-                    tbody.innerHTML += `<tr>
-                        <td>${b.sport}</td>
-                        <td>${b.match}</td>
-                        <td>${b.pick}</td>
-                        <td style="color:#00ffcc;font-weight:bold;">${b.odds}</td>
-                        <td>+${b.ev}%</td>
-                    </tr>`;
-                });
+        // Usiamo il percorso relativo sicuro
+        fetch('./results.json?t=' + timestamp)
+            .then(response => {
+                if (!response.ok) throw new Error("Errore HTTP: " + response.status);
+                return response.json();
             })
-            .catch(err => console.error("Errore nel caricamento dati:", err));
+            .then(data => {
+                console.log("Dati ricevuti:", data); // Questo ti serve per il debug
+                statusEl.innerText = "Ultimo aggiornamento: " + data.last_update;
+                
+                const tbody = document.querySelector("#betsTable tbody");
+                tbody.innerHTML = ""; 
+
+                if (data.recommendations && data.recommendations.length > 0) {
+                    data.recommendations.forEach(b => {
+                        tbody.innerHTML += `<tr>
+                            <td>${b.sport}</td>
+                            <td>${b.match}</td>
+                            <td>${b.pick}</td>
+                            <td style="color:#00ffcc;font-weight:bold;">${b.odds}</td>
+                            <td>+${b.ev}%</td>
+                        </tr>`;
+                    });
+                } else {
+                    statusEl.innerText = "Nessuna opportunità trovata al momento (o file vuoto).";
+                }
+            })
+            .catch(err => {
+                statusEl.innerText = "Errore critico: " + err.message;
+                console.error("Errore completo:", err);
+            });
     </script>
-</body>
-</html>
