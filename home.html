@@ -2,39 +2,122 @@
 <html lang="it">
 <head>
     <meta charset="UTF-8">
-    <title>Bet-Pro Engine</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bet-Pro Multi-Sport Engine</title>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #0f0f0f; color: #fff; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #121212; color: #fff; padding: 15px; }
+        .container { max-width: 1100px; margin: auto; }
+        .card { background: #1e1e1e; padding: 15px; border-radius: 10px; border-left: 4px solid #00ffcc; margin-bottom: 20px; }
+        table { width: 100%; border-collapse: collapse; background: #222; }
+        th, td { padding: 10px; border-bottom: 1px solid #333; text-align: left; font-size: 0.85em; }
+        th { color: #00ffcc; background: #181818; }
+        .btn-add { background: #00ffcc; border: none; padding: 6px 12px; cursor: pointer; border-radius: 4px; font-weight: bold; color: #121212; }
         .tag-SICURA { color: #00ff00; font-weight: bold; }
         .tag-VALUE { color: #ffff00; font-weight: bold; }
         .tag-BIG { color: #ff00ff; font-weight: bold; }
-        table { width: 100%; border-collapse: collapse; }
-        th { color: #aaa; text-align: left; padding: 10px; }
-        td { padding: 10px; border-bottom: 1px solid #222; }
     </style>
 </head>
 <body>
-    <div style="padding:20px;">
-        <h1>Analisi Matematica</h1>
-        <table>
-            <thead><tr><th>Match</th><th>Pick</th><th>Q</th><th>Conf.</th><th>Insight</th></tr></thead>
-            <tbody id="data"></tbody>
-        </table>
+    <div class="container">
+        <h1>BET-PRO MULTI-SPORT ENGINE</h1>
+        <div id="status" style="color: #00ffcc; margin-bottom: 15px;">Caricamento analisi...</div>
+        
+        <div class="card">
+            <h3>🎯 Giocate Consigliate (Analisi Matematica)</h3>
+            <div style="overflow-x: auto;">
+                <table id="betsTable">
+                    <thead>
+                        <tr>
+                            <th>Sport</th>
+                            <th>Match</th>
+                            <th>Tipologia Giocata</th>
+                            <th>Quota</th>
+                            <th>Conf.%</th>
+                            <th>EV%</th>
+                            <th>Insight</th>
+                            <th>Azione</th>
+                        </tr>
+                    </thead>
+                    <tbody><tr><td colspan="8" style="text-align:center;">Caricamento dati...</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>🧮 Schedina Selezionata</h3>
+            <div id="slipItems">Nessuna selezione.</div>
+            <p><strong>Quota Totale:</strong> <span id="totalOdds" style="color:#00ffcc;">1.00</span></p>
+            <input type="number" id="stake" value="10" oninput="updateCalculation()" style="background:#333; color:#fff; border:1px solid #444; padding:5px; width:80px; border-radius:4px;"> €
+            <p><strong>Vincita Potenziale:</strong> <span id="potentialWin" style="color:#00ffcc; font-size:1.1em; font-weight:bold;">0.00</span> €</p>
+        </div>
     </div>
+
     <script>
+        let allBets = [];
+        let selected = [];
+
         fetch('results.json?t=' + Date.now())
             .then(r => r.json())
             .then(data => {
-                document.getElementById('data').innerHTML = data.recommendations.map(b => `
-                    <tr>
+                document.getElementById('status').innerText = "Ultimo aggiornamento: " + data.last_update;
+                allBets = data.recommendations || [];
+                let tbody = document.querySelector("#betsTable tbody");
+                tbody.innerHTML = "";
+
+                if(allBets.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:#ffcc00;">Nessun evento disponibile al momento.</td></tr>`;
+                    return;
+                }
+
+                allBets.forEach(b => {
+                    tbody.innerHTML += `<tr>
+                        <td><span style="font-size:0.75em; background:#333; padding:2px 6px; border-radius:3px; color:#00ffcc;">${b.sport}</span></td>
                         <td>${b.match}</td>
-                        <td>${b.pick}</td>
-                        <td>${b.odds}</td>
+                        <td style="font-weight:bold; color:#fff;">${b.pick}</td>
+                        <td style="font-weight:bold;">${b.odds}</td>
                         <td>${b.prob}%</td>
-                        <td class="tag-${b.insight}">${b.insight}</td>
-                    </tr>
-                `).join('');
+                        <td style="color:#00ffcc;">+${b.ev}%</td>
+                        <td><span class="tag-${b.insight}">${b.insight}</span></td>
+                        <td><button class="btn-add" onclick="addBet('${b.id}')">+</button></td>
+                    </tr>`;
+                });
             });
+
+        window.addBet = function(id) {
+            const bet = allBets.find(x => x.id === id);
+            if (bet && !selected.some(x => x.id === id)) {
+                selected.push(bet);
+                renderSlip();
+            }
+        };
+
+        function renderSlip() {
+            let slipDiv = document.getElementById('slipItems');
+            if (selected.length === 0) {
+                slipDiv.innerHTML = "Nessuna selezione.";
+                updateCalculation();
+                return;
+            }
+            slipDiv.innerHTML = selected.map(x => `
+                <div style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; background:#2a2a2a; padding:6px; border-radius:4px;">
+                    <div><strong>${x.match}</strong><br><span style="color:#00ffcc;">${x.pick}</span> (${x.odds})</div>
+                    <button onclick="removeBet('${x.id}')" style="background:#ff4444; color:#fff; border:none; padding:2px 6px; border-radius:3px; cursor:pointer;">X</button>
+                </div>
+            `).join('');
+            updateCalculation();
+        }
+
+        window.removeBet = function(id) {
+            selected = selected.filter(x => x.id !== id);
+            renderSlip();
+        }
+
+        function updateCalculation() {
+            let total = selected.reduce((acc, b) => acc * b.odds, 1);
+            let stake = parseFloat(document.getElementById('stake').value) || 0;
+            document.getElementById('totalOdds').innerText = total.toFixed(2);
+            document.getElementById('potentialWin').innerText = (total * stake).toFixed(2);
+        }
     </script>
 </body>
 </html>
