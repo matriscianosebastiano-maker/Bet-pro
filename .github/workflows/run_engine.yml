@@ -1,0 +1,36 @@
+name: Run Betting Engine
+
+on:
+  schedule:
+    - cron: '0 */6 * * *' # Esegue lo script ogni 6 ore in automatico
+  workflow_dispatch: # Ti permette di avviarlo manualmente quando vuoi dalla scheda Actions
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          pip install requests
+
+      - name: Run Python Engine
+        env:
+          THE_ODDS_API_KEY: ${{ secrets.THE_ODDS_API_KEY }}
+        run: |
+          python main.py
+
+      - name: Commit and push results.json
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add results.json
+          git commit -m "Aggiornamento automatico quote results.json" || exit 0
+          git push
