@@ -2,74 +2,153 @@
 <html lang="it">
 <head>
     <meta charset="UTF-8">
-    <title>Bet-Pro Quant Engine</title>
+    <title>Bet-Pro Quant Engine & Schedina Simulator</title>
     <style>
         body { font-family: 'Segoe UI', sans-serif; background: #121212; color: #e0e0e0; margin: 0; padding: 20px; }
-        .container { max-width: 1200px; margin: auto; }
+        .container { max-width: 1400px; margin: auto; display: flex; gap: 20px; flex-wrap: wrap; }
+        .main-content { flex: 2; min-width: 700px; }
+        .sidebar { flex: 1; min-width: 320px; background: #1e1e1e; padding: 20px; border-radius: 10px; border-top: 4px solid #00ffcc; height: fit-content; position: sticky; top: 20px; }
         .card { background: #1e1e1e; padding: 20px; border-radius: 10px; border-left: 4px solid #00ffcc; margin-bottom: 20px; }
         table { width: 100%; border-collapse: collapse; background: #222; }
-        th, td { padding: 15px; border-bottom: 1px solid #333; text-align: left; }
+        th, td { padding: 12px; border-bottom: 1px solid #333; text-align: left; font-size: 0.9em; }
         th { color: #00ffcc; }
-        #lastUpdate { color: #00ffcc; font-size: 0.9em; margin-bottom: 10px; font-weight: bold; }
+        #lastUpdate { color: #888; font-size: 0.85em; margin-bottom: 15px; }
+        .btn-add { background: #00ffcc; color: #121212; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        .btn-add:hover { background: #00ccaa; }
+        .slip-item { background: #2a2a2a; padding: 10px; border-radius: 6px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+        .slip-item button { background: #ff4444; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; }
+        .input-stake { width: 100%; padding: 10px; background: #2a2a2a; border: 1px solid #444; color: #fff; border-radius: 5px; margin-top: 10px; box-sizing: border-box; }
+        .summary-box { margin-top: 15px; border-top: 1px solid #333; padding-top: 15px; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>BET-PRO QUANT ENGINE</h1>
-        <div id="lastUpdate">Avvio script...</div>
-        
-        <div class="card">
-            <h3>🔥 Analisi Mercati Globali</h3>
-            <table id="betsTable">
-                <thead>
-                    <tr><th>Sport</th><th>Evento</th><th>Pick</th><th>Quota</th><th>EV%</th></tr>
-                </thead>
-                <tbody>
-                    <tr><td colspan="5" style="text-align:center; color:#888;">In attesa dei dati...</td></tr>
-                </tbody>
-            </table>
+        <div class="main-content">
+            <h1>BET-PRO QUANT ENGINE</h1>
+            <div id="lastUpdate">Caricamento stato...</div>
+            
+            <div class="card">
+                <h3>🔥 Opportunità di Valore & Probabilità</h3>
+                <table id="betsTable">
+                    <thead>
+                        <tr>
+                            <th>Sport</th>
+                            <th>Evento</th>
+                            <th>Pronostico (Pick)</th>
+                            <th>Probabilità</th>
+                            <th>Quota</th>
+                            <th>EV%</th>
+                            <th>Azione</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td colspan="7" style="text-align:center; color:#888;">Caricamento dati in corso...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="sidebar">
+            <h3>🧮 Simulatore Schedina</h3>
+            <div id="slipItems" style="max-height: 350px; overflow-y: auto; margin-top: 15px;">
+                <p style="color: #777; font-size: 0.9em;">Clicca "Aggiungi" sulle partite per comporre la tua schedina.</p>
+            </div>
+            <div class="summary-box">
+                <p><strong>Quota Totale:</strong> <span id="totalOdds" style="color:#00ffcc; font-size: 1.2em;">1.00</span></p>
+                <label for="stake">Importo puntata (€):</label>
+                <input type="number" id="stake" class="input-stake" value="10" min="1" oninput="updateCalculation()">
+                <p style="margin-top: 15px;"><strong>Vincita Potenziale:</strong> <span id="potentialWin" style="color:#00ffcc; font-size: 1.3em; font-weight: bold;">0.00 €</span></p>
+            </div>
         </div>
     </div>
 
     <script>
-        const statusBox = document.getElementById('lastUpdate');
-        statusBox.innerText = "Stato: Chiamata API in corso...";
+        let allBetsData = [];
+        let selectedBets = [];
 
-        // Usiamo l'indirizzo assoluto completo per evitare problemi di percorso su GitHub Pages
-        const jsonUrl = 'https://matriscianosebastiano-maker.github.io/Bet-pro/results.json?' + new Date().getTime();
-
-        fetch(jsonUrl)
-            .then(function(response) {
-                if (!response.ok) {
-                    throw new Error("Errore HTTP: " + response.status);
-                }
-                return response.json();
-            })
-            .then(function(data) {
-                statusBox.innerText = "Ultimo aggiornamento server: " + (data.last_update || "N/D");
-                
+        const timestamp = new Date().getTime();
+        fetch('./results.json?t=' + timestamp)
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById('lastUpdate').innerText = "Ultimo aggiornamento server: " + data.last_update;
+                allBetsData = data.recommendations || [];
                 const tbody = document.querySelector("#betsTable tbody");
                 tbody.innerHTML = ""; 
 
-                if (data.recommendations && data.recommendations.length > 0) {
-                    data.recommendations.forEach(function(b) {
+                if (allBetsData.length > 0) {
+                    allBetsData.forEach((b, index) => {
                         tbody.innerHTML += `<tr>
-                            <td>${b.sport || ''}</td>
-                            <td>${b.match || ''}</td>
-                            <td>${b.pick || ''}</td>
-                            <td style="color:#00ffcc;font-weight:bold;">${b.odds || ''}</td>
-                            <td>+${b.ev || 0}%</td>
+                            <td>${b.sport}</td>
+                            <td>${b.match}</td>
+                            <td style="font-weight:bold; color:#fff;">${b.pick}</td>
+                            <td style="color:#00ffcc;">${b.probability}%</td>
+                            <td style="font-weight:bold;">${b.odds}</td>
+                            <td style="color:#00ffcc;">+${b.ev}%</td>
+                            <td><button class="btn-add" onclick="addToSlip('${b.id}')">Aggiungi</button></td>
                         </tr>`;
                     });
                 } else {
-                    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:#ffcc00;">Nessuna quota disponibile al momento (Mercati vuoti).</td></tr>`;
+                    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#ffcc00;">Nessuna quota di valore trovata al momento.</td></tr>`;
                 }
             })
-            .catch(function(error) {
-                statusBox.innerText = "ERRORE: " + error.message;
-                statusBox.style.color = "#ff4444";
-                console.error("Dettaglio errore:", error);
+            .catch(err => {
+                document.getElementById('lastUpdate').innerText = "Errore nel caricamento del file results.json";
+                console.error(err);
             });
+
+        function addToSlip(id) {
+            const bet = allBetsData.find(b => b.id === id);
+            if (!bet) return;
+            if (selectedBets.some(b => b.id === id)) return; // Evita duplicati
+
+            selectedBets.push(bet);
+            renderSlip();
+        }
+
+        function removeFromSlip(id) {
+            selectedBets = selectedBets.filter(b => b.id !== id);
+            renderSlip();
+        }
+
+        function renderSlip() {
+            const slipContainer = document.getElementById('slipItems');
+            if (selectedBets.length === 0) {
+                slipContainer.innerHTML = `<p style="color: #777; font-size: 0.9em;">Clicca "Aggiungi" sulle partite per comporre la tua schedina.</p>`;
+                document.getElementById('totalOdds').innerText = "1.00";
+                document.getElementById('potentialWin').innerText = "0.00 €";
+                return;
+            }
+
+            slipContainer.innerHTML = "";
+            selectedBets.forEach(b => {
+                slipContainer.innerHTML += `
+                    <div class="slip-item">
+                        <div>
+                            <div style="font-size:0.85em; color:#aaa;">${b.match}</div>
+                            <div style="font-weight:bold; color:#fff;">Pick: ${b.pick} (${b.odds})</div>
+                        </div>
+                        <button onclick="removeFromSlip('${b.id}')">X</button>
+                    </div>
+                `;
+            });
+
+            updateCalculation();
+        }
+
+        function updateCalculation() {
+            if (selectedBets.length === 0) {
+                document.getElementById('totalOdds').innerText = "1.00";
+                document.getElementById('potentialWin').innerText = "0.00 €";
+                return;
+            }
+
+            let totalOdds = selectedBets.reduce((acc, b) => acc * b.odds, 1);
+            let stake = parseFloat(document.getElementById('stake').value) || 0;
+            let potentialWin = totalOdds * stake;
+
+            document.getElementById('totalOdds').innerText = totalOdds.toFixed(2);
+            document.getElementById('potentialWin').innerText = potentialWin.toFixed(2) + " €";
+        }
     </script>
 </body>
 </html>
