@@ -17,11 +17,11 @@
 <body>
     <div class="container">
         <h1>BET-PRO ENGINE</h1>
-        <div id="status" style="color: #00ffcc; margin-bottom: 15px;">Caricamento in corso...</div>
+        <div id="status" style="color: #00ffcc; margin-bottom: 15px;">Inizializzazione motore...</div>
         <div class="card">
             <table id="betsTable">
                 <thead><tr><th>Sport</th><th>Match</th><th>Pick</th><th>Prob %</th><th>Quota</th><th>EV%</th><th>Azioni</th></tr></thead>
-                <tbody><tr><td colspan="7" style="text-align:center; color:#888;">In attesa dei dati...</td></tr></tbody>
+                <tbody><tr><td colspan="7" style="text-align:center; color:#888;">Recupero quote in corso...</td></tr></tbody>
             </table>
         </div>
         <div class="sidebar">
@@ -33,24 +33,30 @@
         </div>
     </div>
     <script>
-        let allBets = [];
-        let selected = [];
+        // Variabili globali per evitare conflitti
+        window.allBets = [];
+        window.selected = [];
 
-        const jsonUrl = 'https://matriscianosebastiano-maker.github.io/Bet-pro/results.json?t=' + new Date().getTime();
-
-        fetch(jsonUrl)
-            .then(r => {
-                if (!r.ok) throw new Error("File JSON non trovato (404)");
-                return r.json();
-            })
-            .then(data => {
-                document.getElementById('status').innerText = "Ultimo aggiornamento: " + (data.last_update || "N/D");
-                allBets = data.recommendations || [];
-                let tbody = document.querySelector("#betsTable tbody");
+        async function avviaMotore() {
+            const statusEl = document.getElementById('status');
+            const tbody = document.querySelector("#betsTable tbody");
+            
+            try {
+                // Il parametro nocache forza il server a dare sempre il file aggiornato
+                const response = await fetch('./results.json?nocache=' + Date.now());
+                
+                if (!response.ok) {
+                    throw new Error(`Impossibile trovare i dati (Errore ${response.status}). Attendi 1 minuto e riprova.`);
+                }
+                
+                const data = await response.json();
+                statusEl.innerText = "Ultimo aggiornamento: " + (data.last_update || "Oggi");
+                
+                window.allBets = data.recommendations || [];
                 tbody.innerHTML = "";
-
-                if (allBets.length > 0) {
-                    allBets.forEach(b => {
+                
+                if (window.allBets.length > 0) {
+                    window.allBets.forEach(b => {
                         tbody.innerHTML += `<tr>
                             <td>${b.sport}</td>
                             <td>${b.match}</td>
@@ -58,39 +64,45 @@
                             <td style="color:#00ffcc;">${b.probability}%</td>
                             <td style="font-weight:bold;">${b.odds}</td>
                             <td style="color:#00ffcc;">+${b.ev}%</td>
-                            <td><button class="btn-add" onclick="add('${b.id}')">Aggiungi</button></td>
+                            <td><button class="btn-add" onclick="aggiungiSchedina('${b.id}')">Aggiungi</button></td>
                         </tr>`;
                     });
                 } else {
-                    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#ffcc00;">Nessun evento disponibile al momento (campionati in pausa o quote non ancora caricate).</td></tr>`;
+                    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#ffcc00;">Nessun evento disponibile al momento.</td></tr>`;
                 }
-            })
-            .catch(e => {
-                document.getElementById('status').innerText = "Errore: " + e.message;
-                document.getElementById('status').style.color = "red";
-            });
-
-        function add(id) {
-            if(!selected.find(x => x.id === id)) selected.push(allBets.find(x => x.id === id));
-            renderSlip();
+            } catch (error) {
+                statusEl.innerText = "ERRORE DI SISTEMA: " + error.message;
+                statusEl.style.color = "#ff4444";
+                tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#ff4444;">Dati non disponibili. Controlla le Actions su GitHub.</td></tr>`;
+            }
         }
 
-        function renderSlip() {
-            let slipDiv = document.getElementById('slipItems');
-            if (selected.length === 0) {
+        window.aggiungiSchedina = function(id) {
+            if(!window.selected.find(x => x.id === id)) {
+                window.selected.push(window.allBets.find(x => x.id === id));
+                aggiornaVistaSchedina();
+            }
+        };
+
+        window.aggiornaVistaSchedina = function() {
+            const slipDiv = document.getElementById('slipItems');
+            if (window.selected.length === 0) {
                 slipDiv.innerHTML = "Nessuna selezione.";
                 return;
             }
-            slipDiv.innerHTML = selected.map(x => `<div style="margin-bottom:8px;"><strong>${x.match}</strong><br>Pick: ${x.pick} (${x.odds})</div>`).join('');
+            slipDiv.innerHTML = window.selected.map(x => `<div style="margin-bottom:8px; background:#333; padding:5px; border-radius:4px;"><strong>${x.match}</strong><br>Pick: ${x.pick} (${x.odds})</div>`).join('');
             updateCalculation();
-        }
+        };
 
-        function updateCalculation() {
-            let total = selected.reduce((acc, b) => acc * b.odds, 1);
-            let stake = parseFloat(document.getElementById('stake').value) || 0;
+        window.updateCalculation = function() {
+            const total = window.selected.reduce((acc, b) => acc * b.odds, 1);
+            const stake = parseFloat(document.getElementById('stake').value) || 0;
             document.getElementById('totalOdds').innerText = total.toFixed(2);
             document.getElementById('potentialWin').innerText = (total * stake).toFixed(2);
-        }
+        };
+
+        // Lancia il caricamento
+        avviaMotore();
     </script>
 </body>
 </html>
