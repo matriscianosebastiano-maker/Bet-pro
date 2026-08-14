@@ -30,11 +30,14 @@
     </div>
 
     <script>
-        fetch('results.json')
+        // Timestamp anti-cache per forzare il caricamento dei dati freschi
+        const timestamp = new Date().getTime();
+        fetch('results.json?t=' + timestamp)
             .then(res => res.json())
             .then(data => {
                 document.getElementById('lastUpdate').innerText = "Ultimo aggiornamento server: " + data.last_update;
                 const tbody = document.querySelector("#betsTable tbody");
+                tbody.innerHTML = ""; // Pulisce la tabella prima di riempirla
                 data.recommendations.forEach(b => {
                     tbody.innerHTML += `<tr>
                         <td>${b.sport}</td>
@@ -44,7 +47,8 @@
                         <td>+${b.ev}%</td>
                     </tr>`;
                 });
-            });
+            })
+            .catch(err => console.error("Errore nel caricamento dati:", err));
     </script>
 </body>
 </html>
