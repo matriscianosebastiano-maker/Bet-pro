@@ -2,19 +2,21 @@ name: Aggiornamento Palinsesto Quant
 
 on:
   schedule:
-    # Esegue lo script ogni giorno alle 07:00 UTC
     - cron: '0 7 * * *'
-  workflow_dispatch: # Permette anche l'esecuzione manuale da GitHub
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - name: Check-out repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Configura Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
@@ -23,7 +25,7 @@ jobs:
 
       - name: Esegui generatore
         env:
-          API_KEY: ${{ secrets.THE_ODDS_API_KEY }}
+          THE_ODDS_API_KEY: ${{ secrets.THE_ODDS_API_KEY }}
         run: python main.py
 
       - name: Commit e Push delle modifiche
