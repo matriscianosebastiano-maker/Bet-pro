@@ -4,15 +4,11 @@ import json
 from datetime import datetime
 
 ODDS_KEY = os.getenv('THE_ODDS_API_KEY')
-GLOBAL_SPORTS = [
-    "soccer_italy_serie_a", "soccer_epl", "soccer_spain_la_liga", 
-    "soccer_germany_bundesliga", "soccer_france_ligue_one",
-    "soccer_uefa_champions_league", "soccer_uefa_europa_league",
-    "basketball_nba", "basketball_euroleague"
-]
+GLOBAL_SPORTS = ["soccer_italy_serie_a", "soccer_epl", "soccer_spain_la_liga"]
 
 def run_engine():
-    all_bets = []
+    best_bets = {} 
+
     for sport in GLOBAL_SPORTS:
         url = f"https://api.the-odds-api.com/v4/sports/{sport}/odds/"
         params = {'apiKey': ODDS_KEY, 'regions': 'eu', 'markets': 'h2h', 'oddsFormat': 'decimal'}
@@ -25,32 +21,38 @@ def run_engine():
                         for m in bookie.get('markets', []):
                             if m.get('key') == 'h2h':
                                 for out in m.get('outcomes', []):
-                                    price = out.get('price', 0)
-                                    if price > 1.05:
-                                        prob = (1 / price) * 1.03
-                                        all_bets.append({
-                                            "id": f"{e['id']}_{out['name']}",
-                                            "sport": sport.replace("_", " ").upper(),
+                                    price = float(out.get('price', 0))
+                                    if price < 1.10: continue
+                                    
+                                    # Calcolo probabilistico
+                                    implied_prob = (1 / price) * 100
+                                    # Calcolo EV (stima di valore)
+                                    ev = round((implied_prob * 1.05) - 100, 2)
+                                    
+                                    # Definizione insight matematico
+                                    insight = "NEUTRAL"
+                                    if implied_prob > 65: insight = "SICURA"
+                                    elif ev > 5: insight = "VALUE"
+                                    elif price > 3.0: insight = "BIG"
+                                    
+                                    key = f"{e['id']}_{out['name']}"
+                                    if key not in best_bets or price > best_bets[key]['odds']:
+                                        best_bets[key] = {
+                                            "id": key,
                                             "match": f"{e['home_team']} vs {e['away_team']}",
                                             "pick": out['name'],
                                             "odds": price,
-                                            "probability": round(min(prob * 100, 99), 1),
-                                            "ev": round(((prob * price) - 1) * 100, 2)
-                                        })
-        except Exception as err:
-            print(f"Errore {sport}: {err}")
-            continue
+                                            "prob": round(implied_prob, 1),
+                                            "ev": ev,
+                                            "insight": insight
+                                        }
+        except: continue
     
-    all_bets.sort(key=lambda x: x['ev'], reverse=True)
-    
-    output = {
-        "last_update": datetime.now().strftime("%d/%m/%Y %H:%M"),
-        "recommendations": all_bets
-    }
+    # Ordiniamo per score di confidenza (Priorità: Probabilità Alta + Valore)
+    final_list = sorted(list(best_bets.values()), key=lambda x: x['prob'], reverse=True)
     
     with open('results.json', 'w', encoding='utf-8') as f:
-        json.dump(output, f, ensure_ascii=False, indent=4)
-    print(f"File salvato con {len(all_bets)} opportunità.")
+        json.dump({"last_update": datetime.now().strftime("%d/%m %H:%M"), "recommendations": final_list}, f, ensure_ascii=False)
 
 if __name__ == "__main__":
     run_engine()
