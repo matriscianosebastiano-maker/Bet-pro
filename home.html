@@ -2,61 +2,80 @@
 <html lang="it">
 <head>
     <meta charset="UTF-8">
-    <title>Bet-Pro Engine</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bet-Pro Quant Engine</title>
     <style>
-        body { font-family: sans-serif; background: #121212; color: #fff; padding: 20px; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #121212; color: #e0e0e0; margin: 0; padding: 15px; }
         .container { max-width: 1200px; margin: auto; }
-        .card { background: #1e1e1e; padding: 20px; border-radius: 10px; border-left: 4px solid #00ffcc; margin-bottom: 20px; }
-        table { width: 100%; border-collapse: collapse; background: #222; }
-        th, td { padding: 12px; border-bottom: 1px solid #333; text-align: left; font-size: 0.9em; }
-        th { color: #00ffcc; }
-        .btn-add { background: #00ffcc; border: none; padding: 5px 10px; cursor: pointer; border-radius: 4px; font-weight: bold; color: #121212; }
-        .sidebar { background: #1e1e1e; padding: 20px; border-radius: 10px; margin-top: 20px; }
+        .card { background: #1e1e1e; padding: 15px; border-radius: 10px; border-left: 4px solid #00ffcc; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        table { width: 100%; border-collapse: collapse; background: #222; margin-top: 10px; }
+        th, td { padding: 10px; border-bottom: 1px solid #333; text-align: left; font-size: 0.85em; }
+        th { color: #00ffcc; background: #181818; }
+        .btn-add { background: #00ffcc; border: none; padding: 6px 12px; cursor: pointer; border-radius: 4px; font-weight: bold; color: #121212; }
+        .btn-add:active { background: #00ccaa; }
+        .sidebar { background: #1e1e1e; padding: 15px; border-radius: 10px; border-top: 4px solid #00ffcc; }
+        .input-stake { background: #222; color: #fff; border: 1px solid #444; padding: 8px; width: 100px; border-radius: 4px; margin-top: 5px; }
+        #status { font-weight: bold; color: #00ffcc; margin-bottom: 15px; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>BET-PRO ENGINE</h1>
-        <div id="status" style="color: #00ffcc; margin-bottom: 15px;">Inizializzazione motore...</div>
+        <h1>BET-PRO QUANT ENGINE</h1>
+        <div id="status">Inizializzazione sistema...</div>
+        
         <div class="card">
-            <table id="betsTable">
-                <thead><tr><th>Sport</th><th>Match</th><th>Pick</th><th>Prob %</th><th>Quota</th><th>EV%</th><th>Azioni</th></tr></thead>
-                <tbody><tr><td colspan="7" style="text-align:center; color:#888;">Recupero quote in corso...</td></tr></tbody>
-            </table>
+            <h3>🔥 Opportunità di Valore</h3>
+            <div style="overflow-x: auto;">
+                <table id="betsTable">
+                    <thead>
+                        <tr>
+                            <th>Sport</th>
+                            <th>Match</th>
+                            <th>Pick</th>
+                            <th>Prob %</th>
+                            <th>Quota</th>
+                            <th>EV%</th>
+                            <th>Azione</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td colspan="7" style="text-align:center; color:#888;">Caricamento dati in corso...</td></tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
+
         <div class="sidebar">
-            <h3>Schedina</h3>
-            <div id="slipItems">Nessuna selezione.</div>
-            <p><strong>Totale Quota:</strong> <span id="totalOdds">1.00</span></p>
-            <input type="number" id="stake" value="10" oninput="updateCalculation()" style="background:#222; color:#fff; border:1px solid #444; padding:5px; width:80px;"> €
-            <p><strong>Vincita:</strong> <span id="potentialWin">0.00</span> €</p>
+            <h3>🧮 Simulatore Schedina</h3>
+            <div id="slipItems" style="margin-bottom: 15px; color: #aaa; font-size: 0.9em;">Nessuna selezione.</div>
+            <p><strong>Quota Totale:</strong> <span id="totalOdds" style="color:#00ffcc;">1.00</span></p>
+            <label for="stake">Puntata (€):</label><br>
+            <input type="number" id="stake" class="input-stake" value="10" min="1" oninput="updateCalculation()">
+            <p style="margin-top: 15px;"><strong>Vincita Potenziale:</strong> <span id="potentialWin" style="color:#00ffcc; font-size: 1.2em; font-weight: bold;">0.00 €</span></p>
         </div>
     </div>
-    <script>
-        // Variabili globali per evitare conflitti
-        window.allBets = [];
-        window.selected = [];
 
-        async function avviaMotore() {
+    <script>
+        let allBets = [];
+        let selected = [];
+
+        async function loadApp() {
             const statusEl = document.getElementById('status');
             const tbody = document.querySelector("#betsTable tbody");
-            
+
             try {
-                // Il parametro nocache forza il server a dare sempre il file aggiornato
-                const response = await fetch('./results.json?nocache=' + Date.now());
+                // Aggiungiamo un timestamp casuale per forzare il browser a non usare la cache
+                const res = await fetch('results.json?v=' + Date.now());
+                if (!res.ok) throw new Error("File dei risultati non trovato (404). Esegui l'Action su GitHub.");
+
+                const data = await res.json();
+                statusEl.innerText = "Ultimo aggiornamento server: " + (data.last_update || "N/D");
                 
-                if (!response.ok) {
-                    throw new Error(`Impossibile trovare i dati (Errore ${response.status}). Attendi 1 minuto e riprova.`);
-                }
-                
-                const data = await response.json();
-                statusEl.innerText = "Ultimo aggiornamento: " + (data.last_update || "Oggi");
-                
-                window.allBets = data.recommendations || [];
+                allBets = data.recommendations || [];
                 tbody.innerHTML = "";
-                
-                if (window.allBets.length > 0) {
-                    window.allBets.forEach(b => {
+
+                if (allBets.length > 0) {
+                    allBets.forEach(b => {
                         tbody.innerHTML += `<tr>
                             <td>${b.sport}</td>
                             <td>${b.match}</td>
@@ -64,45 +83,66 @@
                             <td style="color:#00ffcc;">${b.probability}%</td>
                             <td style="font-weight:bold;">${b.odds}</td>
                             <td style="color:#00ffcc;">+${b.ev}%</td>
-                            <td><button class="btn-add" onclick="aggiungiSchedina('${b.id}')">Aggiungi</button></td>
+                            <td><button class="btn-add" onclick="addBet('${b.id}')">Aggiungi</button></td>
                         </tr>`;
                     });
                 } else {
-                    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#ffcc00;">Nessun evento disponibile al momento.</td></tr>`;
+                    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#ffcc00;">Nessun evento disponibile con EV positivo al momento.</td></tr>`;
                 }
-            } catch (error) {
-                statusEl.innerText = "ERRORE DI SISTEMA: " + error.message;
+            } catch (err) {
+                statusEl.innerText = "ERRORE: " + err.message;
                 statusEl.style.color = "#ff4444";
-                tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#ff4444;">Dati non disponibili. Controlla le Actions su GitHub.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#ff4444;">Impossibile caricare le quote.</td></tr>`;
             }
         }
 
-        window.aggiungiSchedina = function(id) {
-            if(!window.selected.find(x => x.id === id)) {
-                window.selected.push(window.allBets.find(x => x.id === id));
-                aggiornaVistaSchedina();
+        window.addBet = function(id) {
+            const bet = allBets.find(x => x.id === id);
+            if (bet && !selected.some(x => x.id === id)) {
+                selected.push(bet);
+                renderSlip();
             }
         };
 
-        window.aggiornaVistaSchedina = function() {
+        window.removeBet = function(id) {
+            selected = selected.filter(x => x.id !== id);
+            renderSlip();
+        };
+
+        function renderSlip() {
             const slipDiv = document.getElementById('slipItems');
-            if (window.selected.length === 0) {
+            if (selected.length === 0) {
                 slipDiv.innerHTML = "Nessuna selezione.";
+                updateCalculation();
                 return;
             }
-            slipDiv.innerHTML = window.selected.map(x => `<div style="margin-bottom:8px; background:#333; padding:5px; border-radius:4px;"><strong>${x.match}</strong><br>Pick: ${x.pick} (${x.odds})</div>`).join('');
+
+            slipDiv.innerHTML = selected.map(x => `
+                <div style="background:#2a2a2a; padding:8px; border-radius:4px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+                    <div>
+                        <div style="font-size:0.8em; color:#bbb;">${x.match}</div>
+                        <div style="font-weight:bold; color:#fff;">${x.pick} (${x.odds})</div>
+                    </div>
+                    <button onclick="removeBet('${x.id}')" style="background:#ff4444; color:#fff; border:none; padding:4px 8px; border-radius:4px; cursor:pointer;">X</button>
+                </div>
+            `).join('');
+
             updateCalculation();
-        };
+        }
 
         window.updateCalculation = function() {
-            const total = window.selected.reduce((acc, b) => acc * b.odds, 1);
-            const stake = parseFloat(document.getElementById('stake').value) || 0;
-            document.getElementById('totalOdds').innerText = total.toFixed(2);
-            document.getElementById('potentialWin').innerText = (total * stake).toFixed(2);
-        };
+            let totalOdds = selected.reduce((acc, b) => acc * b.odds, 1);
+            let stake = parseFloat(document.getElementById('stake').value) || 0;
+            let potentialWin = totalOdds * stake;
 
-        // Lancia il caricamento
-        avviaMotore();
+            document.getElementById('totalOdds').innerText = totalOdds.toFixed(2);
+            document.getElementById('potentialWin').innerText = potentialWin.toFixed(2) + " €";
+        }
+
+        loadApp();
+    </script>
+</body>
+</html>
     </script>
 </body>
 </html>
