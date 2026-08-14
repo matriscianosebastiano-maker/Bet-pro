@@ -2,214 +2,49 @@
 <html lang="it">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>BetBot Quant Pro</title>
+    <title>Bet-Pro Quant Engine</title>
     <style>
-        :root {
-            --bg-color: #0f172a;
-            --card-bg: #1e293b;
-            --accent: #22c55e;
-            --text-main: #f8fafc;
-            --text-muted: #94a3b8;
-            --border: #334155;
-            --tag-bg: #0f172a;
-        }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background-color: var(--bg-color);
-            color: var(--text-main);
-            margin: 0;
-            padding: 15px;
-            padding-bottom: 90px;
-        }
-        header {
-            background: #1e293b;
-            padding: 15px;
-            border-radius: 12px;
-            border: 1px solid var(--border);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 15px;
-        }
-        header h1 { font-size: 15px; margin: 0; color: var(--accent); }
-        .update-badge { background: var(--tag-bg); padding: 5px 10px; border-radius: 20px; font-size: 11px; border: 1px solid var(--border); color: var(--text-muted); }
-        .tab-content { display: none; }
-        .tab-content.active { display: block; }
-        .card {
-            background: var(--card-bg);
-            border-radius: 12px;
-            padding: 16px;
-            margin-bottom: 15px;
-            border: 1px solid var(--border);
-        }
-        .card-header { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: bold; margin-bottom: 8px; }
-        .match-title { font-size: 15px; font-weight: bold; margin-bottom: 10px; }
-        .match-details {
-            background: var(--tag-bg);
-            padding: 10px;
-            border-radius: 8px;
-            font-size: 13px;
-            margin-bottom: 12px;
-            border-left: 4px solid var(--accent);
-            line-height: 1.4;
-        }
-        .market-tag {
-            display: inline-block;
-            background: #0284c7;
-            color: white;
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-size: 11px;
-            font-weight: bold;
-            margin-bottom: 5px;
-        }
-        .btn {
-            background: var(--accent);
-            color: #000;
-            border: none;
-            width: 100%;
-            padding: 12px;
-            border-radius: 8px;
-            font-weight: bold;
-            font-size: 14px;
-            cursor: pointer;
-        }
-        nav {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            background: #1e293b;
-            border-top: 1px solid var(--border);
-            display: flex;
-            justify-content: space-around;
-            padding: 12px 0;
-            z-index: 1000;
-        }
-        .nav-item { background: none; border: none; color: var(--text-muted); font-size: 13px; font-weight: bold; cursor: pointer; }
-        .nav-item.active { color: var(--accent); }
-        .checkbox-container {
-            display: block;
-            margin: 10px 0;
-            font-size: 13px;
-            background: var(--tag-bg);
-            padding: 12px;
-            border-radius: 8px;
-            border: 1px solid var(--border);
-            cursor: pointer;
-        }
+        body { font-family: 'Segoe UI', sans-serif; background: #121212; color: #e0e0e0; margin: 0; padding: 20px; }
+        .container { max-width: 1200px; margin: auto; }
+        .card { background: #1e1e1e; padding: 20px; border-radius: 10px; border-left: 4px solid #00ffcc; margin-bottom: 20px; }
+        table { width: 100%; border-collapse: collapse; background: #222; }
+        th, td { padding: 15px; border-bottom: 1px solid #333; text-align: left; }
+        th { color: #00ffcc; }
+        #lastUpdate { color: #888; font-size: 0.8em; margin-bottom: 10px; }
     </style>
 </head>
 <body>
-
-    <header>
-        <h1>⚡ BetBot Quant</h1>
-        <div class="update-badge">Agg: <b>14/08/2026 09:19</b></div>
-    </header>
-
     <div class="container">
-        <!-- TAB 1: SINGOLE -->
-        <div id="tab-palinsesto" class="tab-content active">
-            <h3 style="font-size:14px; margin-top:0; color: var(--text-muted);">Singole Matematica Dixon-Coles</h3>
-            <div id="matches-list"></div>
-        </div>
-
-        <!-- TAB 2: MULTIPLA -->
-        <div id="tab-multipla" class="tab-content">
-            <h3 style="font-size:14px; margin-top:0; color: var(--text-muted);">Simulatore Multipla & Probabilità Composta</h3>
-            <div class="card">
-                <p style="color:var(--text-muted); font-size:12px; margin-top:0;">Seleziona gli eventi per la schedina:</p>
-                <div id="multipla-builder"></div>
-                <hr style="border-color:var(--border); margin: 15px 0;">
-                <p>Quota Moltiplicata: <b id="tot-quota" style="color:var(--accent);">1.00</b></p>
-                <p>Probabilità Composta Reale: <b id="tot-prob" style="color:var(--accent);">100%</b></p>
-                <p>Vincita Potenziale (3.00€): <b id="tot-win" style="color:var(--accent); font-size:18px;">0.00€</b></p>
-                <button class="btn" onclick="confermaMultipla()">Gioca Multipla</button>
-            </div>
+        <h1>BET-PRO QUANT ENGINE</h1>
+        <div id="lastUpdate">Caricamento stato...</div>
+        
+        <div class="card">
+            <h3>🔥 Analisi Mercati Globali</h3>
+            <table id="betsTable">
+                <thead>
+                    <tr><th>Sport</th><th>Evento</th><th>Pick</th><th>Quota</th><th>EV%</th></tr>
+                </thead>
+                <tbody></tbody>
+            </table>
         </div>
     </div>
 
-    <nav>
-        <button class="nav-item active" onclick="switchTab('palinsesto', this)">📊 Palinsesto Singole</button>
-        <button class="nav-item" onclick="switchTab('multipla', this)">🔗 Calcolatore Multipla</button>
-    </nav>
-
     <script>
-        const eventiData = [{"id": 1, "sport": "Calcio", "match": "Arsenal vs Coventry City", "quota": "2.0", "esito": "1X + Under 3.5", "probabilita": "53.1%", "descrizione": "Modello Dixon-Coles (Matrice congiunta). Quota Fair: 1.88"}, {"id": 2, "sport": "Calcio", "match": "Hull City vs Manchester United", "quota": "2.0", "esito": "1X + Under 3.5", "probabilita": "53.1%", "descrizione": "Modello Dixon-Coles (Matrice congiunta). Quota Fair: 1.88"}, {"id": 3, "sport": "Calcio", "match": "Everton vs Crystal Palace", "quota": "2.0", "esito": "1X + Under 3.5", "probabilita": "53.1%", "descrizione": "Modello Dixon-Coles (Matrice congiunta). Quota Fair: 1.88"}, {"id": 4, "sport": "Calcio", "match": "Ipswich Town vs Sunderland", "quota": "2.0", "esito": "1X + Under 3.5", "probabilita": "53.1%", "descrizione": "Modello Dixon-Coles (Matrice congiunta). Quota Fair: 1.88"}, {"id": 5, "sport": "Calcio", "match": "Nottingham Forest vs Leeds United", "quota": "2.0", "esito": "1X + Under 3.5", "probabilita": "53.1%", "descrizione": "Modello Dixon-Coles (Matrice congiunta). Quota Fair: 1.88"}, {"id": 6, "sport": "Calcio", "match": "Brentford vs Tottenham Hotspur", "quota": "2.0", "esito": "1X + Under 3.5", "probabilita": "53.1%", "descrizione": "Modello Dixon-Coles (Matrice congiunta). Quota Fair: 1.88"}, {"id": 7, "sport": "Calcio", "match": "Brighton and Hove Albion vs Aston Villa", "quota": "2.0", "esito": "1X + Under 3.5", "probabilita": "53.1%", "descrizione": "Modello Dixon-Coles (Matrice congiunta). Quota Fair: 1.88"}, {"id": 8, "sport": "Calcio", "match": "Manchester City vs Bournemouth", "quota": "2.0", "esito": "1X + Under 3.5", "probabilita": "53.1%", "descrizione": "Modello Dixon-Coles (Matrice congiunta). Quota Fair: 1.88"}, {"id": 9, "sport": "Calcio", "match": "Newcastle United vs Liverpool", "quota": "2.0", "esito": "1X + Under 3.5", "probabilita": "53.1%", "descrizione": "Modello Dixon-Coles (Matrice congiunta). Quota Fair: 1.88"}, {"id": 10, "sport": "Calcio", "match": "Fulham vs Chelsea", "quota": "2.0", "esito": "1X + Under 3.5", "probabilita": "53.1%", "descrizione": "Modello Dixon-Coles (Matrice congiunta). Quota Fair: 1.88"}];
-
-        function renderApp(data) {
-            let htmlSingole = "";
-            let htmlMultipla = "";
-            
-            data.forEach((m) => {
-                htmlSingole += `
-                <div class="card">
-                    <div class="card-header"><span>${m.sport}</span><span>Prob. Reale: ${m.probabilita}</span></div>
-                    <div class="match-title">${m.match}</div>
-                    <div class="match-details">
-                        <span class="market-tag">${m.esito}</span><br>
-                        📖 ${m.descrizione}<br>
-                        🎯 Quota Calcolata: <b>${m.quota}</b>
-                    </div>
-                    <button class="btn" onclick="alert('Giocata singola simulata su: ${m.match}')">Punta Singola (3.00€)</button>
-                </div>`;
-
-                htmlMultipla += `
-                <label class="checkbox-container">
-                    <input type="checkbox" value="${m.quota}" data-prob="${parseFloat(m.probabilita)}" onchange="calcolaMultipla()"> 
-                    <b>[${m.sport}]</b> ${m.match}<br>
-                    <span style="color:var(--accent);">➔ Esito: ${m.esito} (Quota: ${m.quota})</span>
-                </label>`;
+        fetch('results.json')
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById('lastUpdate').innerText = "Ultimo aggiornamento server: " + data.last_update;
+                const tbody = document.querySelector("#betsTable tbody");
+                data.recommendations.forEach(b => {
+                    tbody.innerHTML += `<tr>
+                        <td>${b.sport}</td>
+                        <td>${b.match}</td>
+                        <td>${b.pick}</td>
+                        <td style="color:#00ffcc;font-weight:bold;">${b.odds}</td>
+                        <td>+${b.ev}%</td>
+                    </tr>`;
+                });
             });
-
-            document.getElementById('matches-list').innerHTML = htmlSingole;
-            document.getElementById('multipla-builder').innerHTML = htmlMultipla;
-        }
-
-        function switchTab(tabName, element) {
-            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-            
-            if(tabName === 'palinsesto') {
-                document.getElementById('tab-palinsesto').classList.add('active');
-            } else {
-                document.getElementById('tab-multipla').classList.add('active');
-            }
-            element.classList.add('active');
-        }
-
-        function calcolaMultipla() {
-            let checkboxes = document.querySelectorAll('#multipla-builder input:checked');
-            let quotaTot = 1.0;
-            let probComposta = 1.0;
-
-            checkboxes.forEach(cb => {
-                quotaTot *= parseFloat(cb.value);
-                probComposta *= (parseFloat(cb.getAttribute('data-prob')) / 100);
-            });
-            
-            if (checkboxes.length === 0) {
-                quotaTot = 1.00;
-                probComposta = 1.00;
-            }
-            
-            let vincita = 3.00 * quotaTot;
-            document.getElementById('tot-quota').innerText = quotaTot.toFixed(2);
-            document.getElementById('tot-prob').innerText = (probComposta * 100).toFixed(1) + '%';
-            document.getElementById('tot-win').innerText = (checkboxes.length > 0 ? vincita.toFixed(2) : "0.00") + '€';
-        }
-
-        function confermaMultipla() {
-            let checkboxes = document.querySelectorAll('#multipla-builder input:checked');
-            if (checkboxes.length < 2) {
-                alert('⚠️ Seleziona almeno 2 eventi per creare la multipla!');
-                return;
-            }
-            alert('✅ Multipla registrata con successo!');
-        }
-
-        renderApp(eventiData);
     </script>
 </body>
 </html>
