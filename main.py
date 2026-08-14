@@ -1,15 +1,14 @@
 import os
 import requests
 import json
-from datetime import datetime, timezone
+from datetime import datetime
 
 ODDS_KEY = os.getenv('THE_ODDS_API_KEY')
 GLOBAL_SPORTS = [
     "soccer_italy_serie_a", "soccer_epl", "soccer_spain_la_liga", 
     "soccer_germany_bundesliga", "soccer_france_ligue_one",
     "soccer_uefa_champions_league", "soccer_uefa_europa_league",
-    "basketball_nba", "basketball_euroleague", "basketball_italy_lega_a",
-    "tennis_atp_us_open", "tennis_wta_us_open"
+    "basketball_nba", "basketball_euroleague"
 ]
 
 def run_engine():
@@ -38,11 +37,20 @@ def run_engine():
                                             "probability": round(min(prob * 100, 99), 1),
                                             "ev": round(((prob * price) - 1) * 100, 2)
                                         })
-        except: continue
+        except Exception as err:
+            print(f"Errore {sport}: {err}")
+            continue
     
     all_bets.sort(key=lambda x: x['ev'], reverse=True)
-    with open('results.json', 'w') as f:
-        json.dump({"last_update": datetime.now().strftime("%d/%m %H:%M"), "recommendations": all_bets}, f)
+    
+    output = {
+        "last_update": datetime.now().strftime("%d/%m/%Y %H:%M"),
+        "recommendations": all_bets
+    }
+    
+    with open('results.json', 'w', encoding='utf-8') as f:
+        json.dump(output, f, ensure_ascii=False, indent=4)
+    print(f"File salvato con {len(all_bets)} opportunità.")
 
 if __name__ == "__main__":
     run_engine()
