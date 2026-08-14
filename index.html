@@ -69,14 +69,11 @@
                 return r.json();
             })
             .then(function(data) {
-                document.getElementById('status').innerText = "Ultimo aggiornamento: " + (data.updated || "N/D");
+                // Corretto: legge last_update dal JSON
+                document.getElementById('status').innerText = "Ultimo aggiornamento: " + (data.last_update || "N/D");
                 
-                var recommendations = data.data || [];
-                
-                if(recommendations.length > 0) {
-                    globalTopPick = recommendations[0];
-                    allBets = recommendations.slice(1);
-                }
+                globalTopPick = data.top_pick || null;
+                allBets = data.recommendations || [];
                 
                 var topDiv = document.getElementById('topPickContainer');
                 if (globalTopPick) {
@@ -87,6 +84,8 @@
                         '<p style="font-size: 0.85em; color: #ccc; margin: 5px 0;">Probabilità stimata: ' + (globalTopPick.prob || '0') + '% | Valore Atteso (EV): <strong style="color:#00ffcc;">+' + (globalTopPick.ev || '0') + '%</strong></p>' +
                         '<button class="btn-add" style="margin-top:8px;" onclick="addBet(\'' + (globalTopPick.id || 'top_pick') + '\')">Aggiungi alla Schedina</button>' +
                     '</div>';
+                } else {
+                    topDiv.innerHTML = '';
                 }
 
                 var tbody = document.querySelector("#betsTable tbody");
@@ -101,7 +100,7 @@
                     b.id = b.id || ('bet_' + index);
                     
                     var evVal = b.ev || 0;
-                    var riskText = evVal > 5 ? "Ottimo Valore (EV+)" : (evVal > 0 ? "Valore Moderato (EV+)" : "Standard / Sotto Margine");
+                    var riskText = b.risk || (evVal > 5 ? "Ottimo Valore (EV+)" : (evVal > 0 ? "Valore Moderato (EV+)" : "Standard"));
                     var riskClass = evVal > 5 ? "risk-basso" : (evVal > 0 ? "risk-medio" : "risk-alto");
 
                     var tr = document.createElement('tr');
@@ -128,7 +127,7 @@
                 bet = allBets.find(function(x) { return x.id === id; });
             }
 
-            if (bet && !selected.some(function(x) { return (x.id === id || x.match === bet.match && x.pick === bet.pick); })) {
+            if (bet && !selected.some(function(x) { return (x.id === id || (x.match === bet.match && x.pick === bet.pick)); })) {
                 if(!bet.id) bet.id = id;
                 selected.push(bet);
                 renderSlip();
