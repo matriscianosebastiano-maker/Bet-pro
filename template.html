@@ -1,150 +1,215 @@
-from datetime import datetime
-import json
-import math
-import os
-import requests
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>BetBot Quant Pro</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --accent: #22c55e;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --border: #334155;
+            --tag-bg: #0f172a;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 15px;
+            padding-bottom: 90px;
+        }
+        header {
+            background: #1e293b;
+            padding: 15px;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        header h1 { font-size: 15px; margin: 0; color: var(--accent); }
+        .update-badge { background: var(--tag-bg); padding: 5px 10px; border-radius: 20px; font-size: 11px; border: 1px solid var(--border); color: var(--text-muted); }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 15px;
+            border: 1px solid var(--border);
+        }
+        .card-header { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: bold; margin-bottom: 8px; }
+        .match-title { font-size: 15px; font-weight: bold; margin-bottom: 10px; }
+        .match-details {
+            background: var(--tag-bg);
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 13px;
+            margin-bottom: 12px;
+            border-left: 4px solid var(--accent);
+            line-height: 1.4;
+        }
+        .market-tag {
+            display: inline-block;
+            background: #0284c7;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .btn {
+            background: var(--accent);
+            color: #000;
+            border: none;
+            width: 100%;
+            padding: 12px;
+            border-radius: 8px;
+            font-weight: bold;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: #1e293b;
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: space-around;
+            padding: 12px 0;
+            z-index: 1000;
+        }
+        .nav-item { background: none; border: none; color: var(--text-muted); font-size: 13px; font-weight: bold; cursor: pointer; }
+        .nav-item.active { color: var(--accent); }
+        .checkbox-container {
+            display: block;
+            margin: 10px 0;
+            font-size: 13px;
+            background: var(--tag-bg);
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
 
-# Legge la chiave direttamente dai Secrets di GitHub
-API_KEY = os.environ.get("THE_ODDS_API_KEY", "")
+    <header>
+        <h1>⚡ BetBot Quant</h1>
+        <div class="update-badge">Agg: <b>{{OGGI}}</b></div>
+    </header>
 
+    <div class="container">
+        <!-- TAB 1: SINGOLE -->
+        <div id="tab-palinsesto" class="tab-content active">
+            <h3 style="font-size:14px; margin-top:0; color: var(--text-muted);">Singole Matematica Dixon-Coles</h3>
+            <div id="matches-list"></div>
+        </div>
 
-# --- MODELLO MATEMATICO CONGIUNTO (Poisson + Dixon-Coles) ---
-def dixon_coles_tau(h, a, lambda_home, lambda_away, rho=-0.13):
-    """Correzione matematico-statistica per la dipendenza a bassi punteggi (0-0, 1-0, 0-1, 1-1)."""
-    if h == 0 and a == 0:
-        return 1.0 - (lambda_home * lambda_away * rho)
-    elif h == 0 and a == 1:
-        return 1.0 + (lambda_home * rho)
-    elif h == 1 and a == 0:
-        return 1.0 + (lambda_away * rho)
-    elif h == 1 and a == 1:
-        return 1.0 - rho
-    return 1.0
+        <!-- TAB 2: MULTIPLA -->
+        <div id="tab-multipla" class="tab-content">
+            <h3 style="font-size:14px; margin-top:0; color: var(--text-muted);">Simulatore Multipla & Probabilità Composta</h3>
+            <div class="card">
+                <p style="color:var(--text-muted); font-size:12px; margin-top:0;">Seleziona gli eventi per la schedina:</p>
+                <div id="multipla-builder"></div>
+                <hr style="border-color:var(--border); margin: 15px 0;">
+                <p>Quota Moltiplicata: <b id="tot-quota" style="color:var(--accent);">1.00</b></p>
+                <p>Probabilità Composta Reale: <b id="tot-prob" style="color:var(--accent);">100%</b></p>
+                <p>Vincita Potenziale (3.00€): <b id="tot-win" style="color:var(--accent); font-size:18px;">0.00€</b></p>
+                <button class="btn" onclick="confermaMultipla()">Gioca Multipla</button>
+            </div>
+        </div>
+    </div>
 
+    <nav>
+        <button class="nav-item active" onclick="switchTab('palinsesto', this)">📊 Palinsesto Singole</button>
+        <button class="nav-item" onclick="switchTab('multipla', this)">🔗 Calcolatore Multipla</button>
+    </nav>
 
-def calcola_probabilita_rigorosa(
-    lambda_home, lambda_away, payout_bookmaker=0.94
-):
-    """Calcola la probabilità reale di 1X + Under 3.5 sulla MATRICE CONGIUNTA di risultati."""
-    p_combo_1x_under35 = 0.0
+    <script>
+        const eventiData = {{EVENTI_JSON}};
 
-    # Matrice di joint probability (0 a 8 gol)
-    for h in range(9):
-        for a in range(9):
-            p_h = (math.pow(lambda_home, h) * math.exp(-lambda_home)) / math.factorial(
-                h
-            )
-            p_a = (math.pow(lambda_away, a) * math.exp(-lambda_away)) / math.factorial(
-                a
-            )
+        function renderApp(data) {
+            let htmlSingole = "";
+            let htmlMultipla = "";
+            
+            data.forEach((m) => {
+                htmlSingole += `
+                <div class="card">
+                    <div class="card-header"><span>${m.sport}</span><span>Prob. Reale: ${m.probabilita}</span></div>
+                    <div class="match-title">${m.match}</div>
+                    <div class="match-details">
+                        <span class="market-tag">${m.esito}</span><br>
+                        📖 ${m.descrizione}<br>
+                        🎯 Quota Calcolata: <b>${m.quota}</b>
+                    </div>
+                    <button class="btn" onclick="alert('Giocata singola simulata su: ${m.match}')">Punta Singola (3.00€)</button>
+                </div>`;
 
-            # Correzione Dixon-Coles
-            tau = dixon_coles_tau(h, a, lambda_home, lambda_away)
-            p_exact = p_h * p_a * tau
+                htmlMultipla += `
+                <label class="checkbox-container">
+                    <input type="checkbox" value="${m.quota}" data-prob="${parseFloat(m.probabilita)}" onchange="calcolaMultipla()"> 
+                    <b>[${m.sport}]</b> ${m.match}<br>
+                    <span style="color:var(--accent);">➔ Esito: ${m.esito} (Quota: ${m.quota})</span>
+                </label>`;
+            });
 
-            # Condizioni congiunte (1X E Under 3.5)
-            if (h >= a) and ((h + a) < 3.5):
-                p_combo_1x_under35 += p_exact
+            document.getElementById('matches-list').innerHTML = htmlSingole;
+            document.getElementById('multipla-builder').innerHTML = htmlMultipla;
+        }
 
-    quota_fair = round(1.0 / p_combo_1x_under35, 2)
-    quota_bookie = round(1.0 / (p_combo_1x_under35 * payout_bookmaker), 2)
+        function switchTab(tabName, element) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+            
+            if(tabName === 'palinsesto') {
+                document.getElementById('tab-palinsesto').classList.add('active');
+            } else {
+                document.getElementById('tab-multipla').classList.add('active');
+            }
+            element.classList.add('active');
+        }
 
-    return {
-        "prob_combo": round(p_combo_1x_under35 * 100, 1),
-        "quota_fair": quota_fair,
-        "quota_bookie": quota_bookie,
-    }
+        function calcolaMultipla() {
+            let checkboxes = document.querySelectorAll('#multipla-builder input:checked');
+            let quotaTot = 1.0;
+            let probComposta = 1.0;
 
+            checkboxes.forEach(cb => {
+                quotaTot *= parseFloat(cb.value);
+                probComposta *= (parseFloat(cb.getAttribute('data-prob')) / 100);
+            });
+            
+            if (checkboxes.length === 0) {
+                quotaTot = 1.00;
+                probComposta = 1.00;
+            }
+            
+            let vincita = 3.00 * quotaTot;
+            document.getElementById('tot-quota').innerText = quotaTot.toFixed(2);
+            document.getElementById('tot-prob').innerText = (probComposta * 100).toFixed(1) + '%';
+            document.getElementById('tot-win').innerText = (checkboxes.length > 0 ? vincita.toFixed(2) : "0.00") + '€';
+        }
 
-# --- PARSING E SCARICAMENTO DATI LIVE ---
-def scarica_eventi_reali():
-    """Recupera le quote reali odierni da The-Odds-API."""
-    if not API_KEY:
-        print(
-            "⚠️ Nessuna API KEY trovata nei secret. Uso dati di test/fallback..."
-        )
-        return fallback_eventi_demo()
+        function confermaMultipla() {
+            let checkboxes = document.querySelectorAll('#multipla-builder input:checked');
+            if (checkboxes.length < 2) {
+                alert('⚠️ Seleziona almeno 2 eventi per creare la multipla!');
+                return;
+            }
+            alert('✅ Multipla registrata con successo!');
+        }
 
-    url = f"https://api.the-odds-api.com/v4/sports/soccer_epl/odds/?apiKey={API_KEY}&regions=eu&markets=h2h"
-
-    try:
-        response = requests.get(url, timeout=10)
-        data = response.json()
-
-        if response.status_code != 200:
-            print(f"Errore API: {data.get('message', 'Sconosciuto')}")
-            return fallback_eventi_demo()
-
-        eventi_processati = []
-        for idx, match in enumerate(data[:10]):
-            home = match["home_team"]
-            away = match["away_team"]
-
-            # Lambda dinamici stimati sulla forza teorica delle squadre
-            l_home, l_away = 1.65, 1.10
-            res = calcola_probabilita_rigorosa(l_home, l_away)
-
-            eventi_processati.append(
-                {
-                    "id": idx + 1,
-                    "sport": "Calcio",
-                    "match": f"{home} vs {away}",
-                    "quota": str(res["quota_bookie"]),
-                    "esito": "1X + Under 3.5",
-                    "probabilita": f"{res['prob_combo']}%",
-                    "descrizione": f"Modello Dixon-Coles (Matrice congiunta). Quota Fair: {res['quota_fair']}",
-                }
-            )
-
-        return (
-            eventi_processati
-            if eventi_processati
-            else fallback_eventi_demo()
-        )
-
-    except Exception as e:
-        print(f"Eccezione durante il caricamento dati: {e}")
-        return fallback_eventi_demo()
-
-
-def fallback_eventi_demo():
-    res1 = calcola_probabilita_rigorosa(1.85, 0.70)
-    res2 = calcola_probabilita_rigorosa(1.40, 1.10)
-    return [
-        {
-            "id": 1,
-            "sport": "Calcio",
-            "match": "Arsenal vs Chelsea",
-            "quota": str(res1["quota_bookie"]),
-            "esito": "1X + Under 3.5",
-            "probabilita": f"{res1['prob_combo']}%",
-            "descrizione": f"Modello Dixon-Coles. Probabilità Reale: {res1['prob_combo']}%.",
-        },
-        {
-            "id": 2,
-            "sport": "Calcio",
-            "match": "Liverpool vs Manchester City",
-            "quota": str(res2["quota_bookie"]),
-            "esito": "1X + Under 3.5",
-            "probabilita": f"{res2['prob_combo']}%",
-            "descrizione": f"Modello Dixon-Coles. Probabilità Reale: {res2['prob_combo']}%.",
-        },
-    ]
-
-
-# Esecuzione principale
-eventi = scarica_eventi_reali()
-oggi = datetime.now().strftime("%d/%m/%Y %H:%M")
-
-# Generazione file HTML (Frontend)
-with open("template.html", "r", encoding="utf-8") as f:
-    template = f.read()
-
-html_final = template.replace("{{OGGI}}", oggi).replace(
-    "{{EVENTI_JSON}}", json.dumps(eventi)
-)
-
-with open("index.html", "w", encoding="utf-8") as f:
-    f.write(html_final)
-
-print("✅ File index.html aggiornato e rigenerato con successo!")
+        renderApp(eventiData);
+    </script>
+</body>
+</html>
