@@ -69,42 +69,48 @@
                 return r.json();
             })
             .then(function(data) {
-                document.getElementById('status').innerText = "Ultimo aggiornamento: " + (data.last_update || "N/D");
-                globalTopPick = data.top_pick || null;
+                document.getElementById('status').innerText = "Ultimo aggiornamento: " + (data.updated || "N/D");
+                
+                var recommendations = data.data || [];
+                
+                if(recommendations.length > 0) {
+                    globalTopPick = recommendations[0];
+                    allBets = recommendations.slice(1);
+                }
                 
                 var topDiv = document.getElementById('topPickContainer');
                 if (globalTopPick) {
                     topDiv.innerHTML = '<div class="card top-card">' +
-                        '<h3 style="color:#ffcc00; margin-top:0;">🎯 TOP PICK CONSIGLIATA</h3>' +
-                        '<p style="font-size: 1.1em; margin: 5px 0;"><strong>' + (globalTopPick.match || '') + '</strong></p>' +
-                        '<p style="margin: 5px 0;">Puntata consigliata: <span style="color:#00ffcc; font-weight:bold; font-size:1.1em;">' + (globalTopPick.pick || '') + '</span> a quota <strong style="color:#fff;">' + (globalTopPick.odds || '') + '</strong></p>' +
-                        '<p style="font-size: 0.85em; color: #ccc; margin: 5px 0;">Probabilità stimata: ' + (globalTopPick.prob || '0') + '% | Valutazione Rischio: ' + (globalTopPick.risk || 'N/D') + '</p>' +
-                        '<button class="btn-add" style="margin-top:8px;" onclick="addBet(\'' + (globalTopPick.id || '') + '\')">Aggiungi alla Schedina</button>' +
+                        '<h3 style="color:#ffcc00; margin-top:0;">🎯 TOP PICK CONSIGLIATA (EV+)</h3>' +
+                        '<p style="font-size: 1.1em; margin: 5px 0;"><strong>' + (globalTopPick.match || '') + '</strong> <span style="font-size:0.75em; color:#aaa;">(' + (globalTopPick.sport || '') + ')</span></p>' +
+                        '<p style="margin: 5px 0;">Mercato: <strong>' + (globalTopPick.market || '') + '</strong> | Puntata: <span style="color:#00ffcc; font-weight:bold; font-size:1.1em;">' + (globalTopPick.pick || '') + '</span> a quota <strong style="color:#fff;">' + (globalTopPick.odds || '') + '</strong></p>' +
+                        '<p style="font-size: 0.85em; color: #ccc; margin: 5px 0;">Probabilità stimata: ' + (globalTopPick.prob || '0') + '% | Valore Atteso (EV): <strong style="color:#00ffcc;">+' + (globalTopPick.ev || '0') + '%</strong></p>' +
+                        '<button class="btn-add" style="margin-top:8px;" onclick="addBet(\'' + (globalTopPick.id || 'top_pick') + '\')">Aggiungi alla Schedina</button>' +
                     '</div>';
                 }
 
-                allBets = data.recommendations || [];
                 var tbody = document.querySelector("#betsTable tbody");
                 tbody.innerHTML = "";
 
                 if(allBets.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#ffcc00;">Nessun evento disponibile.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#ffcc00;">Nessun ulteriore evento disponibile.</td></tr>';
                     return;
                 }
 
-                allBets.forEach(function(b) {
-                    var riskText = b.risk || "";
-                    var riskClass = "risk-medio";
-                    if(riskText.indexOf("Basso") !== -1) riskClass = "risk-basso";
-                    if(riskText.indexOf("Alto") !== -1) riskClass = "risk-alto";
+                allBets.forEach(function(b, index) {
+                    b.id = b.id || ('bet_' + index);
+                    
+                    var evVal = b.ev || 0;
+                    var riskText = evVal > 5 ? "Ottimo Valore (EV+)" : (evVal > 0 ? "Valore Moderato (EV+)" : "Standard / Sotto Margine");
+                    var riskClass = evVal > 5 ? "risk-basso" : (evVal > 0 ? "risk-medio" : "risk-alto");
 
                     var tr = document.createElement('tr');
-                    tr.innerHTML = '<td><strong>' + (b.match || '') + '</strong><br><span style="font-size:0.75em; color:#888;">' + (b.sport || '') + '</span></td>' +
+                    tr.innerHTML = '<td><strong>' + (b.match || '') + '</strong><br><span style="font-size:0.75em; color:#888;">' + (b.sport || '') + ' • ' + (b.market || '') + '</span></td>' +
                                    '<td style="font-weight:bold; color:#00ffcc;">' + (b.pick || '') + '</td>' +
                                    '<td style="font-weight:bold;">' + (b.odds || '') + '</td>' +
                                    '<td>' + (b.prob || '0') + '%</td>' +
                                    '<td><span class="' + riskClass + '">' + riskText + '</span></td>' +
-                                   '<td><button class="btn-add" onclick="addBet(\'' + (b.id || '') + '\')">+</button></td>';
+                                   '<td><button class="btn-add" onclick="addBet(\'' + b.id + '\')">+</button></td>';
                     tbody.appendChild(tr);
                 });
             })
@@ -116,13 +122,14 @@
 
         window.addBet = function(id) {
             var bet = null;
-            if (globalTopPick && globalTopPick.id === id) {
+            if (globalTopPick && (globalTopPick.id === id || id === 'top_pick')) {
                 bet = globalTopPick;
             } else {
                 bet = allBets.find(function(x) { return x.id === id; });
             }
 
-            if (bet && !selected.some(function(x) { return x.id === id; })) {
+            if (bet && !selected.some(function(x) { return (x.id === id || x.match === bet.match && x.pick === bet.pick); })) {
+                if(!bet.id) bet.id = id;
                 selected.push(bet);
                 renderSlip();
             }
