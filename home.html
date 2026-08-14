@@ -78,7 +78,7 @@
                         '<h3 style="color:#ffcc00; margin-top:0;">🎯 TOP PICK CONSIGLIATA</h3>' +
                         '<p style="font-size: 1.1em; margin: 5px 0;"><strong>' + (globalTopPick.match || '') + '</strong></p>' +
                         '<p style="margin: 5px 0;">Puntata consigliata: <span style="color:#00ffcc; font-weight:bold; font-size:1.1em;">' + (globalTopPick.pick || '') + '</span> a quota <strong style="color:#fff;">' + (globalTopPick.odds || '') + '</strong></p>' +
-                        '<p style="font-size: 0.85em; color: #ccc; margin: 5px 0;">Probabilità stimata: ' + (globalTopPick.prob || '') + '% | Valutazione Rischio: ' + (globalTopPick.risk || 'N/D') + '</p>' +
+                        '<p style="font-size: 0.85em; color: #ccc; margin: 5px 0;">Probabilità stimata: ' + (globalTopPick.prob || '0') + '% | Valutazione Rischio: ' + (globalTopPick.risk || 'N/D') + '</p>' +
                         '<button class="btn-add" style="margin-top:8px;" onclick="addBet(\'' + (globalTopPick.id || '') + '\')">Aggiungi alla Schedina</button>' +
                     '</div>';
                 }
@@ -102,7 +102,7 @@
                     tr.innerHTML = '<td><strong>' + (b.match || '') + '</strong><br><span style="font-size:0.75em; color:#888;">' + (b.sport || '') + '</span></td>' +
                                    '<td style="font-weight:bold; color:#00ffcc;">' + (b.pick || '') + '</td>' +
                                    '<td style="font-weight:bold;">' + (b.odds || '') + '</td>' +
-                                   '<td>' + (b.prob || '') + '%</td>' +
+                                   '<td>' + (b.prob || '0') + '%</td>' +
                                    '<td><span class="' + riskClass + '">' + riskText + '</span></td>' +
                                    '<td><button class="btn-add" onclick="addBet(\'' + (b.id || '') + '\')">+</button></td>';
                     tbody.appendChild(tr);
