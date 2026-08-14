@@ -3,106 +3,50 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bet-Pro Quant Engine</title>
+    <title>Bet-Pro Debug</title>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #121212; color: #e0e0e0; margin: 0; padding: 15px; }
-        .container { max-width: 1200px; margin: auto; }
-        .card { background: #1e1e1e; padding: 15px; border-radius: 10px; border-left: 4px solid #00ffcc; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
-        table { width: 100%; border-collapse: collapse; background: #222; margin-top: 10px; }
-        th, td { padding: 10px; border-bottom: 1px solid #333; text-align: left; font-size: 0.85em; }
-        th { color: #00ffcc; background: #181818; }
-        .btn-add { background: #00ffcc; border: none; padding: 6px 12px; cursor: pointer; border-radius: 4px; font-weight: bold; color: #121212; }
-        .btn-add:active { background: #00ccaa; }
-        .sidebar { background: #1e1e1e; padding: 15px; border-radius: 10px; border-top: 4px solid #00ffcc; }
-        .input-stake { background: #222; color: #fff; border: 1px solid #444; padding: 8px; width: 100px; border-radius: 4px; margin-top: 5px; }
-        #status { font-weight: bold; color: #00ffcc; margin-bottom: 15px; }
+        body { font-family: monospace; background: #121212; color: #fff; padding: 20px; }
+        .box { background: #1e1e1e; padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #ff4444; }
+        .success { border-left-color: #00ffcc; }
+        pre { white-space: pre-wrap; word-wrap: break-word; color: #ffcc00; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>BET-PRO QUANT ENGINE</h1>
-        <div id="status">Inizializzazione sistema...</div>
-        
-        <div class="card">
-            <h3>🔥 Opportunità di Valore</h3>
-            <div style="overflow-x: auto;">
-                <table id="betsTable">
-                    <thead>
-                        <tr>
-                            <th>Sport</th>
-                            <th>Match</th>
-                            <th>Pick</th>
-                            <th>Prob %</th>
-                            <th>Quota</th>
-                            <th>EV%</th>
-                            <th>Azione</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr><td colspan="7" style="text-align:center; color:#888;">Caricamento dati in corso...</td></tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <div class="sidebar">
-            <h3>🧮 Simulatore Schedina</h3>
-            <div id="slipItems" style="margin-bottom: 15px; color: #aaa; font-size: 0.9em;">Nessuna selezione.</div>
-            <p><strong>Quota Totale:</strong> <span id="totalOdds" style="color:#00ffcc;">1.00</span></p>
-            <label for="stake">Puntata (€):</label><br>
-            <input type="number" id="stake" class="input-stake" value="10" min="1" oninput="updateCalculation()">
-            <p style="margin-top: 15px;"><strong>Vincita Potenziale:</strong> <span id="potentialWin" style="color:#00ffcc; font-size: 1.2em; font-weight: bold;">0.00 €</span></p>
-        </div>
-    </div>
+    <h2>DIAGNOSTICA BET-PRO</h2>
+    <div id="log" class="box">Caricamento in corso...</div>
 
     <script>
-        let allBets = [];
-        let selected = [];
-
-        async function loadApp() {
-            const statusEl = document.getElementById('status');
-            const tbody = document.querySelector("#betsTable tbody");
-
+        async function test() {
+            const logBox = document.getElementById('log');
             try {
-                // Aggiungiamo un timestamp casuale per forzare il browser a non usare la cache
-                const res = await fetch('results.json?v=' + Date.now());
-                if (!res.ok) throw new Error("File dei risultati non trovato (404). Esegui l'Action su GitHub.");
-
-                const data = await res.json();
-                statusEl.innerText = "Ultimo aggiornamento server: " + (data.last_update || "N/D");
+                logBox.innerHTML = "1. Provo a scaricare 'results.json'...";
+                const url = 'results.json?t=' + Date.now();
                 
-                allBets = data.recommendations || [];
-                tbody.innerHTML = "";
-
-                if (allBets.length > 0) {
-                    allBets.forEach(b => {
-                        tbody.innerHTML += `<tr>
-                            <td>${b.sport}</td>
-                            <td>${b.match}</td>
-                            <td style="font-weight:bold; color:#fff;">${b.pick}</td>
-                            <td style="color:#00ffcc;">${b.probability}%</td>
-                            <td style="font-weight:bold;">${b.odds}</td>
-                            <td style="color:#00ffcc;">+${b.ev}%</td>
-                            <td><button class="btn-add" onclick="addBet('${b.id}')">Aggiungi</button></td>
-                        </tr>`;
-                    });
-                } else {
-                    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#ffcc00;">Nessun evento disponibile con EV positivo al momento.</td></tr>`;
+                const res = await fetch(url);
+                logBox.innerHTML += `<br>Stato HTTP: ${res.status} ${res.statusText}`;
+                
+                if (!res.ok) {
+                    throw new Error(`File non trovato o errore server (HTTP ${res.status}). Hai avviato l'Action su GitHub?`);
                 }
+
+                const text = await res.text();
+                logBox.innerHTML += `<br>2. File scaricato con successo! Lunghezza: ${text.length} caratteri.`;
+                
+                const data = JSON.parse(text);
+                logBox.className = "box success";
+                logBox.innerHTML = `<h3>TUTTO OK!</h3>
+                    Ultimo aggiornamento: ${data.last_update || 'N/D'}<br>
+                    Eventi trovati: ${data.recommendations ? data.recommendations.length : 0}`;
+
             } catch (err) {
-                statusEl.innerText = "ERRORE: " + err.message;
-                statusEl.style.color = "#ff4444";
-                tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#ff4444;">Impossibile caricare le quote.</td></tr>`;
+                logBox.className = "box";
+                logBox.innerHTML = `<h3>ERRORE INTERcettATO:</h3><pre>${err.message}</pre>`;
             }
         }
-
-        window.addBet = function(id) {
-            const bet = allBets.find(x => x.id === id);
-            if (bet && !selected.some(x => x.id === id)) {
-                selected.push(bet);
-                renderSlip();
-            }
-        };
+        test();
+    </script>
+</body>
+</html>
 
         window.removeBet = function(id) {
             selected = selected.filter(x => x.id !== id);
