@@ -32,15 +32,16 @@
     </div>
 
     <script>
-        // Funzione eseguita subito per verificare che JS funzioni
         const statusBox = document.getElementById('lastUpdate');
-        statusBox.innerText = "Stato: Connessione al file JSON in corso...";
+        statusBox.innerText = "Stato: Chiamata API in corso...";
 
-        // Proviamo a caricare il file con percorso assoluto/relativo sicuro
-        fetch('./results.json?' + new Date().getTime())
+        // Usiamo l'indirizzo assoluto completo per evitare problemi di percorso su GitHub Pages
+        const jsonUrl = 'https://matriscianosebastiano-maker.github.io/Bet-pro/results.json?' + new Date().getTime();
+
+        fetch(jsonUrl)
             .then(function(response) {
                 if (!response.ok) {
-                    throw new Error("File non trovato o errore HTTP: " + response.status);
+                    throw new Error("Errore HTTP: " + response.status);
                 }
                 return response.json();
             })
