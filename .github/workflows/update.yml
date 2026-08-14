@@ -14,9 +14,11 @@ jobs:
       - run: python main.py
         env:
           THE_ODDS_API_KEY: ${{ secrets.THE_ODDS_API_KEY }}
-      - run: |
+      - name: Commit and push results.json
+        run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git reset --hard HEAD
           git pull origin main --rebase
           git add results.json
           git commit -m "Auto update" || exit 0
