@@ -3,90 +3,89 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bet-Pro Debug</title>
+    <title>Bet-Pro Engine</title>
     <style>
-        body { font-family: monospace; background: #121212; color: #fff; padding: 20px; }
-        .box { background: #1e1e1e; padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #ff4444; }
-        .success { border-left-color: #00ffcc; }
-        pre { white-space: pre-wrap; word-wrap: break-word; color: #ffcc00; }
+        body { font-family: sans-serif; background: #121212; color: #fff; padding: 20px; }
+        .container { max-width: 1200px; margin: auto; }
+        .card { background: #1e1e1e; padding: 15px; border-radius: 10px; border-left: 4px solid #00ffcc; margin-bottom: 20px; }
+        table { width: 100%; border-collapse: collapse; background: #222; }
+        th, td { padding: 10px; border-bottom: 1px solid #333; text-align: left; font-size: 0.9em; }
+        th { color: #00ffcc; }
+        .btn-add { background: #00ffcc; border: none; padding: 5px 10px; cursor: pointer; border-radius: 4px; font-weight: bold; color: #121212; }
+        .sidebar { background: #1e1e1e; padding: 15px; border-radius: 10px; margin-top: 20px; }
     </style>
 </head>
 <body>
-    <h2>DIAGNOSTICA BET-PRO</h2>
-    <div id="log" class="box">Caricamento in corso...</div>
+    <div class="container">
+        <h1>BET-PRO ENGINE</h1>
+        <div id="status" style="color: #00ffcc; margin-bottom: 15px;">Caricamento...</div>
+        
+        <div class="card">
+            <table id="betsTable">
+                <thead><tr><th>Match</th><th>Pick</th><th>Quota</th><th>EV%</th><th>Azione</th></tr></thead>
+                <tbody><tr><td colspan="5" style="text-align:center;">Caricamento...</td></tr></tbody>
+            </table>
+        </div>
+
+        <div class="sidebar">
+            <h3>Schedina</h3>
+            <div id="slipItems">Nessuna selezione.</div>
+            <p><strong>Totale Quota:</strong> <span id="totalOdds">1.00</span></p>
+            <input type="number" id="stake" value="10" oninput="updateCalculation()" style="background:#333; color:#fff; border:none; padding:5px; width:60px;"> €
+            <p><strong>Vincita:</strong> <span id="potentialWin">0.00</span> €</p>
+        </div>
+    </div>
 
     <script>
-        async function test() {
-            const logBox = document.getElementById('log');
+        let allBets = [];
+        let selected = [];
+
+        async function loadData() {
             try {
-                logBox.innerHTML = "1. Provo a scaricare 'results.json'...";
-                const url = 'results.json?t=' + Date.now();
+                const res = await fetch('results.json?t=' + Date.now());
+                const data = await res.json();
+                document.getElementById('status').innerText = "Ultimo aggiornamento: " + (data.last_update || "N/D");
+                allBets = data.recommendations || [];
                 
-                const res = await fetch(url);
-                logBox.innerHTML += `<br>Stato HTTP: ${res.status} ${res.statusText}`;
+                let tbody = document.querySelector("#betsTable tbody");
+                tbody.innerHTML = "";
                 
-                if (!res.ok) {
-                    throw new Error(`File non trovato o errore server (HTTP ${res.status}). Hai avviato l'Action su GitHub?`);
-                }
-
-                const text = await res.text();
-                logBox.innerHTML += `<br>2. File scaricato con successo! Lunghezza: ${text.length} caratteri.`;
-                
-                const data = JSON.parse(text);
-                logBox.className = "box success";
-                logBox.innerHTML = `<h3>TUTTO OK!</h3>
-                    Ultimo aggiornamento: ${data.last_update || 'N/D'}<br>
-                    Eventi trovati: ${data.recommendations ? data.recommendations.length : 0}`;
-
+                allBets.slice(0, 50).forEach(b => { // Mostriamo i primi 50 per velocità
+                    tbody.innerHTML += `<tr>
+                        <td>${b.match}</td>
+                        <td>${b.pick}</td>
+                        <td>${b.odds}</td>
+                        <td>+${b.ev}%</td>
+                        <td><button class="btn-add" onclick="addBet('${b.id}')">+</button></td>
+                    </tr>`;
+                });
             } catch (err) {
-                logBox.className = "box";
-                logBox.innerHTML = `<h3>ERRORE INTERcettATO:</h3><pre>${err.message}</pre>`;
+                document.getElementById('status').innerText = "Errore caricamento dati.";
             }
         }
-        test();
-    </script>
-</body>
-</html>
 
-        window.removeBet = function(id) {
-            selected = selected.filter(x => x.id !== id);
-            renderSlip();
+        window.addBet = function(id) {
+            if(!selected.find(x => x.id === id)) {
+                selected.push(allBets.find(x => x.id === id));
+                renderSlip();
+            }
         };
 
         function renderSlip() {
-            const slipDiv = document.getElementById('slipItems');
-            if (selected.length === 0) {
-                slipDiv.innerHTML = "Nessuna selezione.";
-                updateCalculation();
-                return;
-            }
-
-            slipDiv.innerHTML = selected.map(x => `
-                <div style="background:#2a2a2a; padding:8px; border-radius:4px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
-                    <div>
-                        <div style="font-size:0.8em; color:#bbb;">${x.match}</div>
-                        <div style="font-weight:bold; color:#fff;">${x.pick} (${x.odds})</div>
-                    </div>
-                    <button onclick="removeBet('${x.id}')" style="background:#ff4444; color:#fff; border:none; padding:4px 8px; border-radius:4px; cursor:pointer;">X</button>
-                </div>
-            `).join('');
-
+            let slipItems = document.getElementById('slipItems');
+            if(selected.length === 0) { slipItems.innerHTML = "Nessuna selezione."; return; }
+            slipItems.innerHTML = selected.map(x => `<div style="margin-bottom:5px;">${x.match} (${x.odds})</div>`).join('');
             updateCalculation();
         }
 
-        window.updateCalculation = function() {
-            let totalOdds = selected.reduce((acc, b) => acc * b.odds, 1);
-            let stake = parseFloat(document.getElementById('stake').value) || 0;
-            let potentialWin = totalOdds * stake;
-
-            document.getElementById('totalOdds').innerText = totalOdds.toFixed(2);
-            document.getElementById('potentialWin').innerText = potentialWin.toFixed(2) + " €";
+        function updateCalculation() {
+            let total = selected.reduce((acc, b) => acc * b.odds, 1);
+            let stake = document.getElementById('stake').value;
+            document.getElementById('totalOdds').innerText = total.toFixed(2);
+            document.getElementById('potentialWin').innerText = (total * stake).toFixed(2);
         }
 
-        loadApp();
-    </script>
-</body>
-</html>
+        loadData();
     </script>
 </body>
 </html>
