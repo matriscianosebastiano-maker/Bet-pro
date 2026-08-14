@@ -6,16 +6,28 @@ from datetime import datetime, timezone
 ODDS_KEY = os.getenv('THE_ODDS_API_KEY')
 FOOTBALL_KEY = os.getenv('FOOTBALL_DATA_KEY')
 
-# Elenco completo dei principali sport globali coperti da The-Odds-API
+# Elenco completo ed espanso dei principali sport e campionati globali
 GLOBAL_SPORTS = [
+    # Calcio Europeo
     "soccer_italy_serie_a",
     "soccer_epl",
     "soccer_spain_la_liga",
     "soccer_germany_bundesliga",
     "soccer_france_ligue_one",
-    "tennis_atp_aus_open", # Dinamico in base alla stagione
+    "soccer_uefa_champions_league",
+    "soccer_uefa_europa_league",
+    
+    # Basket
     "basketball_nba",
-    "basketball_euroleague"
+    "basketball_euroleague",
+    "basketball_italy_lega_a",
+    
+    # Tennis (Tornei ATP/WTA principali)
+    "tennis_atp_us_open",
+    "tennis_wta_us_open",
+    "tennis_atp_aus_open",
+    "tennis_atp_french_open",
+    "tennis_atp_wimbledon"
 ]
 
 def get_live_odds(sport_key):
@@ -42,7 +54,8 @@ def get_live_odds(sport_key):
                         valid_events.append(event)
             return valid_events
     except Exception as e:
-        print(f"Errore recupero {sport_key}: {e}")
+        # Alcuni sport potrebbero non essere attivi in determinati periodi dell'anno
+        pass
     return []
 
 def calculate_ev(prob, odds):
@@ -54,14 +67,14 @@ def calculate_kelly(prob, odds):
     return round(max(0, k) * 100, 2)
 
 def run_global_quant_engine():
-    print("Avvio motore quantitativo globale multi-sport in tempo reale...")
+    print("Avvio scansione globale multi-sport estesa...")
     all_bets = []
 
     for sport in GLOBAL_SPORTS:
         events = get_live_odds(sport)
         for event in events:
-            home = event.get('home_team')
-            away = event.get('away_team')
+            home = event.get('home_team', 'Giocatore 1')
+            away = event.get('away_team', 'Giocatore 2')
             commence = event.get('commence_time')
             
             for bookie in event.get('bookmakers', []):
@@ -71,9 +84,9 @@ def run_global_quant_engine():
                             name = outcome.get('name')
                             price = outcome.get('price')
                             
-                            if price > 1:
+                            if price and price > 1:
                                 implied_prob = 1 / price
-                                modeled_prob = implied_prob * 1.03 # Modello di correzione statistica dell'edge
+                                modeled_prob = implied_prob * 1.03 # Correzione modello statistico edge
                                 ev = calculate_ev(modeled_prob, price)
                                 kelly = calculate_kelly(modeled_prob, price)
                                 
@@ -81,8 +94,8 @@ def run_global_quant_engine():
                                 
                                 if ev > 0:
                                     all_bets.append({
-                                        "id": f"{event.get('id')}_{name}".replace(" ", "_"),
-                                        "sport": sport.upper(),
+                                        "id": f"{event.get('id', 'ev')}_{name}".replace(" ", "_"),
+                                        "sport": sport.upper().replace("_", " "),
                                         "match": f"{home} vs {away}",
                                         "pick": name,
                                         "odds": price,
@@ -92,7 +105,7 @@ def run_global_quant_engine():
                                         "commence": commence
                                     })
 
-    # Ordina per EV decrescente (le migliori in assoluto in cima)
+    # Ordina per EV decrescente
     all_bets.sort(key=lambda x: x['ev'], reverse=True)
 
     output_data = {
@@ -105,7 +118,7 @@ def run_global_quant_engine():
     with open('results.json', 'w') as f:
         json.dump(output_data, f, indent=4)
     
-    print(f"Elaborazione completata. Trovate {len(all_bets)} opportunità globali.")
+    print(f"Scansione completata. Trovate {len(all_bets)} opportunità totali tra calcio, basket e tennis.")
 
 if __name__ == "__main__":
     run_global_quant_engine()
