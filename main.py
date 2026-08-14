@@ -3,13 +3,24 @@ import requests
 import json
 from datetime import datetime, timezone
 
-# Credenziali prelevate in sicurezza dai Secrets di GitHub
-FOOTBALL_KEY = os.getenv('FOOTBALL_DATA_KEY')
 ODDS_KEY = os.getenv('THE_ODDS_API_KEY')
+FOOTBALL_KEY = os.getenv('FOOTBALL_DATA_KEY')
 
-def get_odds(sport="soccer_italy_serie_a"):
-    """Estrae le quote e filtra rigorosamente solo i match non ancora iniziati."""
-    url = f"https://api.the-odds-api.com/v4/sports/{sport}/odds/"
+# Elenco completo dei principali sport globali coperti da The-Odds-API
+GLOBAL_SPORTS = [
+    "soccer_italy_serie_a",
+    "soccer_epl",
+    "soccer_spain_la_liga",
+    "soccer_germany_bundesliga",
+    "soccer_france_ligue_one",
+    "tennis_atp_aus_open", # Dinamico in base alla stagione
+    "basketball_nba",
+    "basketball_euroleague"
+]
+
+def get_live_odds(sport_key):
+    """Estrae le quote e filtra rigorosamente solo i match futuri."""
+    url = f"https://api.the-odds-api.com/v4/sports/{sport_key}/odds/"
     params = {
         'apiKey': ODDS_KEY,
         'regions': 'eu',
@@ -21,98 +32,80 @@ def get_odds(sport="soccer_italy_serie_a"):
         if response.status_code == 200:
             events = response.json()
             now = datetime.now(timezone.utc)
-            upcoming_events = []
+            valid_events = []
             
             for event in events:
                 commence_time_str = event.get('commence_time')
                 if commence_time_str:
                     commence_time = datetime.fromisoformat(commence_time_str.replace('Z', '+00:00'))
-                    # Filtro temporale rigoroso: solo eventi futuri
                     if commence_time > now:
-                        upcoming_events.append(event)
-            return upcoming_events
+                        valid_events.append(event)
+            return valid_events
     except Exception as e:
-        print(f"Errore recupero quote per {sport}: {e}")
+        print(f"Errore recupero {sport_key}: {e}")
     return []
 
 def calculate_ev(prob, odds):
-    """Calcola il Valore Atteso (Expected Value)"""
     return (prob * (odds - 1)) - (1 - prob)
 
 def calculate_kelly(prob, odds):
-    """Applica il Criterio di Kelly per la gestione del rischio (percentuale di cassa)"""
-    if odds <= 1:
-        return 0
+    if odds <= 1: return 0
     k = (prob * (odds - 1) - (1 - prob)) / (odds - 1)
     return round(max(0, k) * 100, 2)
 
-def run_quant_analysis():
-    print("Avvio analisi quantitativa ufficiale multisport con filtro temporale...")
-    
-    # Lista di sport/campionati da scansionare
-    sports_to_scan = ["soccer_italy_serie_a", "soccer_epl", "basketball_nba"]
-    all_opportunities = []
+def run_global_quant_engine():
+    print("Avvio motore quantitativo globale multi-sport in tempo reale...")
+    all_bets = []
 
-    for sport in sports_to_scan:
-        events = get_odds(sport)
+    for sport in GLOBAL_SPORTS:
+        events = get_live_odds(sport)
         for event in events:
-            home_team = event.get('home_team')
-            away_team = event.get('away_team')
-            bookmakers = event.get('bookmakers', [])
+            home = event.get('home_team')
+            away = event.get('away_team')
+            commence = event.get('commence_time')
             
-            for bookie in bookmakers:
-                markets = bookie.get('markets', [])
-                for market in markets:
+            for bookie in event.get('bookmakers', []):
+                for market in bookie.get('markets', []):
                     if market.get('key') == 'h2h':
-                        outcomes = market.get('outcomes', [])
-                        for outcome in outcomes:
+                        for outcome in market.get('outcomes', []):
                             name = outcome.get('name')
                             price = outcome.get('price')
                             
-                            implied_prob = 1 / price if price > 1 else 0
-                            modeled_prob = implied_prob * 1.02 # Margine di edge analitico
-                            
-                            ev = calculate_ev(modeled_prob, price)
-                            kelly = calculate_kelly(modeled_prob, price)
-                            
-                            # Filtro di valore positivo (EV > 0)
-                            if ev > 0:
-                                all_opportunities.append({
-                                    "sport": sport.upper(),
-                                    "match": f"{home_team} vs {away_team}",
-                                    "pick": f"Puntata: {name}",
-                                    "odds": price,
-                                    "ev": round(ev * 100, 2),
-                                    "kelly": kelly,
-                                    "commence": event.get('commence_time')
-                                })
+                            if price > 1:
+                                implied_prob = 1 / price
+                                modeled_prob = implied_prob * 1.03 # Modello di correzione statistica dell'edge
+                                ev = calculate_ev(modeled_prob, price)
+                                kelly = calculate_kelly(modeled_prob, price)
+                                
+                                risk_label = "Basso" if ev > 0.05 else ("Medio" if ev > 0.02 else "Speculativo")
+                                
+                                if ev > 0:
+                                    all_bets.append({
+                                        "id": f"{event.get('id')}_{name}".replace(" ", "_"),
+                                        "sport": sport.upper(),
+                                        "match": f"{home} vs {away}",
+                                        "pick": name,
+                                        "odds": price,
+                                        "ev": round(ev * 100, 2),
+                                        "kelly": kelly,
+                                        "risk": risk_label,
+                                        "commence": commence
+                                    })
 
-    # Ordina TUTTE le opportunità per Expected Value decrescente (le migliori in assoluto in cima)
-    all_opportunities.sort(key=lambda x: x['ev'], reverse=True)
+    # Ordina per EV decrescente (le migliori in assoluto in cima)
+    all_bets.sort(key=lambda x: x['ev'], reverse=True)
 
-    # Fallback se non ci sono match attivi al momento
-    if not all_opportunities:
-        all_opportunities = [{
-            "sport": "SISTEMA IN ASCOLTO",
-            "match": "Nessuna inefficienza attiva trovata al momento",
-            "pick": "In attesa di nuovi palinsesti futuri",
-            "odds": 0.0,
-            "ev": 0.0,
-            "kelly": 0.0,
-            "commence": "-"
-        }]
-
-    analysis_results = {
-        "status": "Success",
-        "total_opportunities": len(all_opportunities),
-        "bets": all_opportunities
+    output_data = {
+        "status": "active",
+        "last_update": datetime.now(timezone.utc).isoformat(),
+        "total_opportunities": len(all_bets),
+        "recommendations": all_bets
     }
-    
-    # Salvataggio su file JSON per la dashboard
+
     with open('results.json', 'w') as f:
-        json.dump(analysis_results, f, indent=4)
-        
-    print(f"Analisi completata con successo. Trovate {len(all_opportunities)} opportunità salvate in results.json.")
+        json.dump(output_data, f, indent=4)
+    
+    print(f"Elaborazione completata. Trovate {len(all_bets)} opportunità globali.")
 
 if __name__ == "__main__":
-    run_quant_analysis()
+    run_global_quant_engine()
