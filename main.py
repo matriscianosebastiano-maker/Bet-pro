@@ -41,12 +41,13 @@ def run_engine():
                                 if price <= 1.05:
                                     continue
                                 
+                                # Assegnazione esplicita del segno e tipo di giocata
                                 if name == home:
-                                    label = f"1 ({home})"
+                                    label = f"1 - Vittoria Casa ({home})"
                                 elif name == away:
-                                    label = f"2 ({away})"
+                                    label = f"2 - Vittoria Trasferta ({away})"
                                 else:
-                                    label = "X (Pareggio)"
+                                    label = "X - Pareggio"
                                     
                                 prob = round((1 / price) * 100, 1)
                                 ev = round((prob * 1.05) - 100, 2)
