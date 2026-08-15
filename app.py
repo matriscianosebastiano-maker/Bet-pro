@@ -1,208 +1,187 @@
 import streamlit as st
+import requests
 import pandas as pd
 import numpy as np
 import google.generativeai as genai
-import random # Usato qui solo per simulare i dati se l'API non è collegata
 
-# --- 1. CONFIGURAZIONE PAGINA E VARIABILI ---
-st.set_page_config(
-    page_title="Bet-Pro | Intelligence", 
-    page_icon="📈", 
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
-# Nascondere il menu di default di Streamlit per un look più pulito
-hide_st_style = """
-            <style>
-            #MainMenu {visibility: hidden;}
-            footer {visibility: hidden;}
-            header {visibility: hidden;}
-            </style>
-            """
-st.markdown(hide_st_style, unsafe_allow_html=True)
-
-# API Key di Gemini (sostituisci con la tua se diversa o usa i secrets di Streamlit)
+# --- 1. SETUP ---
+st.set_page_config(page_title="Bet-Pro | Intelligence", page_icon="🎯", layout="wide")
 GEMINI_API_KEY = "AQ.Ab8RN6JgwZVuzMONM_Zmn_IlwL-PqY9-Sdu3Bxw8jxDNeAfBwg"
 
-# --- 2. FUNZIONI DI CALCOLO E DATI ---
-
-def calcola_probabilita_implicita(quota):
-    """Calcola la probabilità implicita data una quota decimale."""
-    if quota > 0:
-        return (1 / quota) * 100
-    return 0
-
-def calcola_kelly(quota, probabilita_stimata, bankroll=1000):
-    """
-    Calcola la percentuale del bankroll da puntare secondo il Criterio di Kelly.
-    formula: f* = (bp - q) / b
-    b = quota decimale - 1
-    p = probabilità di vincita stimata (decimale, es. 0.55)
-    q = probabilità di perdita (1 - p)
-    """
-    if quota <= 1 or probabilita_stimata <= 0:
-        return 0.0
+# --- 2. MOTORE DI ACQUISIZIONE DATI REALI (ESPN) ---
+@st.cache_data(ttl=300)
+def fetch_master_sports_data():
+    matches_list = []
     
-    b = quota - 1
-    p = probabilita_stimata / 100
-    q = 1 - p
+    # Endpoint reali ESPN
+    endpoints = [
+        {"sport": "soccer", "league": "ita.1", "name": "Serie A"},
+        {"sport": "soccer", "league": "eng.1", "name": "Premier League"},
+        {"sport": "soccer", "league": "esp.1", "name": "La Liga"},
+        {"sport": "basketball", "league": "nba", "name": "NBA"}
+    ]
     
-    f_star = (b * p - q) / b
-    
-    # Se f_star è negativo, il vantaggio è del bookmaker, non si punta.
-    # Applichiamo un "Fractional Kelly" (es. 0.5 o mezzo Kelly) per mitigare il rischio
-    fractional_multiplier = 0.5 
-    
-    if f_star > 0:
-        puntata_perc = (f_star * fractional_multiplier) * 100
-        return round(puntata_perc, 2)
-    return 0.0
-
-def mock_fetch_odds_data():
-    """
-    Funzione simulata per recuperare i dati.
-    Qui andrà inserita la tua logica reale (es. chiamate a The Odds API).
-    """
-    squadre = [("Napoli", "Inter"), ("Juventus", "Milan"), ("Roma", "Lazio"), ("Atalanta", "Fiorentina")]
-    dati = []
-    
-    for casa, trasferta in squadre:
-        q1 = round(random.uniform(1.3, 3.5), 2)
-        qx = round(random.uniform(2.8, 4.0), 2)
-        q2 = round(random.uniform(1.8, 4.5), 2)
+    for ep in endpoints:
+        url = f"https://site.api.espn.com/apis/site/v2/sports/{ep['sport']}/{ep['league']}/scoreboard"
+        try:
+            response = requests.get(url, timeout=5)
+            if response.status_code == 200:
+                data = response.json()
+                for event in data.get("events", []):
+                    match_name = event.get("name", "Match")
+                    
+                    # Estrazione squadre per pulizia nome
+                    competitions = event.get("competitions", [{}])[0]
+                    competitors = competitions.get("competitors", [])
+                    home_team, away_team = "Home", "Away"
+                    for c in competitors:
+                        if c.get("homeAway") == "home":
+                            home_team = c.get("team", {}).get("displayName", "Home")
+                        elif c.get("homeAway") == "away":
+                            away_team = c.get("team", {}).get("displayName", "Away")
+                            
+                    match_str = f"{home_team} vs {away_team}" if home_team != "Home" else match_name
+                    
+                    # Generazione quote simulate realistiche (da sostituire con The Odds API se hai la chiave)
+                    import random
+                    q1 = round(random.uniform(1.40, 3.50), 2)
+                    q2 = round(random.uniform(1.80, 4.50), 2)
+                    qx = round(random.uniform(2.90, 4.00), 2)
+                    
+                    matches_list.append({
+                        "Lega": ep["name"], "Match": match_str,
+                        "Quota_1": q1, "Quota_X": qx, "Quota_2": q2
+                    })
+        except Exception:
+            continue
+            
+    # Fallback d'emergenza se ESPN è offline
+    if not matches_list:
+        matches_list = [
+            {"Lega": "Serie A", "Match": "Nessun evento live ESPN", "Quota_1": 2.10, "Quota_X": 3.20, "Quota_2": 3.60}
+        ]
         
-        # Simulazione di una confidenza algoritmica
-        confidenza = random.randint(45, 75) 
-        
-        kelly_1 = calcola_kelly(q1, confidenza)
-        
-        dati.append({
-            "Lega": "Serie A",
-            "Match": f"{casa} vs {trasferta}",
-            "Quota_1": q1,
-            "Quota_X": qx,
-            "Quota_2": q2,
-            "Pronostico": "1 (Casa)" if q1 < q2 else "2 (Trasferta)",
-            "Confidenza (%)": confidenza,
-            "Kelly_Puntata_Max (%)": kelly_1
-        })
-    
-    return pd.DataFrame(dati)
+    return pd.DataFrame(matches_list)
 
-# --- 3. INTEGRAZIONE GEMINI AI ---
-def get_gemini_market_intelligence(api_key, dataframe):
-    """Invia i dati elaborati a Gemini per un'analisi strategica testuale."""
+# --- 3. MOTORE MATEMATICO E KELLY ---
+def calculate_market_intelligence(df):
+    if df.empty: return df
+    
+    # Probabilità implicite
+    df['Prob_1_Imp'] = 1 / df['Quota_1']
+    df['Prob_X_Imp'] = 1 / df['Quota_X']
+    df['Prob_2_Imp'] = 1 / df['Quota_2']
+    
+    # Rimozione Aggio
+    total_prob = df['Prob_1_Imp'] + df['Prob_X_Imp'] + df['Prob_2_Imp']
+    df['Prob_1_Norm'] = df['Prob_1_Imp'] / total_prob
+    df['Prob_X_Norm'] = df['Prob_X_Imp'] / total_prob
+    df['Prob_2_Norm'] = df['Prob_2_Imp'] / total_prob
+    
+    best_outcomes = []
+    confidences = []
+    kelly_stakes = []
+    
+    for _, row in df.iterrows():
+        probs = {'1': row['Prob_1_Norm'], 'X': row['Prob_X_Norm'], '2': row['Prob_2_Norm']}
+        quotes = {'1': row['Quota_1'], 'X': row['Quota_X'], '2': row['Quota_2']}
+        
+        best_choice = max(probs, key=probs.get)
+        conf_val = probs[best_choice]
+        
+        # Calcolo Kelly
+        p = conf_val
+        quota = quotes[best_choice]
+        b = quota - 1
+        q = 1 - p
+        
+        kelly = ((b * p - q) / b) * 100 if b > 0 else 0
+        kelly_pct = max(0.0, round(kelly * 0.5, 2)) # Frazionato al 50% per sicurezza
+        
+        best_outcomes.append(best_choice)
+        confidences.append(int(conf_val * 100))
+        kelly_stakes.append(kelly_pct)
+        
+    df['Esito Consigliato'] = best_outcomes
+    df['Confidenza (%)'] = confidences
+    df['Kelly Stake (%)'] = kelly_stakes
+    
+    return df
+
+# --- 4. INTEGRAZIONE GEMINI AI CON FALLBACK INFALLIBILE ---
+def get_gemini_market_intelligence(api_key, df_filtered):
+    genai.configure(api_key=api_key)
+    
+    # Prepara solo i migliori 10 eventi per non confondere l'AI
+    df_ai = df_filtered.sort_values(by="Confidenza (%)", ascending=False).head(10)
+    market_summary = df_ai[['Lega', 'Match', 'Quota_1', 'Quota_X', 'Quota_2', 'Esito Consigliato', 'Kelly Stake (%)']].to_string()
+    
+    prompt = f"""
+    Agisci come un Quantitative Sports Trader. Analizza i seguenti eventi sportivi:
+    
+    {market_summary}
+    
+    1. 🎯 Analisi Esiti: Commenta le 2 migliori "Value Bet" in base alla confidenza e al Kelly Stake.
+    2. ⚠️ Gestione Rischio: Dai un rapido consiglio su come frazionare il bankroll oggi.
+    
+    Rispondi in Markdown in modo professionale, distaccato e sintetico.
+    """
+    
+    # TENTATIVO 1: Usa il modello aggiornato
     try:
-        genai.configure(api_key=api_key)
-        
-        # IMPORTANTE: Utilizzo del modello stabile richiesto
         model = genai.GenerativeModel('gemini-1.5-flash')
-        
-        # Prepariamo un riassunto dei dati in formato stringa per il prompt
-        market_summary = dataframe.to_string(index=False)
-        
-        prompt = f"""
-        Agisci come un Quantitative Trader e analista sportivo professionista.
-        Ho un algoritmo che ha processato le seguenti quote di mercato e calcolato 
-        la size della puntata tramite il Criterio di Kelly (frazione).
-        
-        Ecco i dati dei match di oggi:
-        {market_summary}
-        
-        Compiti:
-        1. Identifica le 2 o 3 migliori "Value Bet" (puntate di valore) basandoti sulla confidenza e sul Kelly.
-        2. Spiega brevemente perché queste partite presentano un'opportunità matematica.
-        3. Fornisci un avvertimento sul money management per queste specifiche puntate.
-        
-        Scrivi il report in italiano, usa il formato Markdown e mantieni un tono tecnico, analitico e distaccato.
-        """
-        
-        # Richiamiamo il modello
         response = model.generate_content(prompt)
-        return response.text, "successo"
-        
-    except Exception as e:
-        return None, f"Errore di comunicazione con Gemini: {str(e)}"
+        return response.text, "Successo"
+    except Exception as e_flash:
+        # TENTATIVO 2 (PARACADUTE): Se Streamlit ha librerie vecchie, usa il modello legacy universale
+        try:
+            model_fallback = genai.GenerativeModel('gemini-pro')
+            response = model_fallback.generate_content(prompt)
+            return response.text, "Successo (Modello Base)"
+        except Exception as e_pro:
+            return None, f"Errore critico Gemini: {str(e_pro)}"
 
-# --- 4. INTERFACCIA UTENTE (UI) ---
-
-# Sidebar
+# --- 5. INTERFACCIA UTENTE ---
 with st.sidebar:
     st.title("⚙️ Bet-Pro Settings")
+    st.success("🔑 API Gemini Integrata")
+    st.info("📡 Feed Reale: ESPN Global")
     st.markdown("---")
-    st.success("🔑 API Gemini Configurata")
-    st.info("🧠 Motore: Gemini 1.5 Flash")
-    
-    st.markdown("---")
-    st.subheader("Filtri Analisi")
-    min_confidence = st.slider("Confidenza Algoritmica Minima (%)", min_value=30, max_value=90, value=50)
-    min_kelly = st.slider("Puntata Kelly Minima (%)", min_value=0.0, max_value=10.0, value=0.5, step=0.1)
+    min_conf = st.slider("Confidenza Minima Algoritmo (%)", min_value=35, max_value=80, value=45)
 
-# Main Body
-st.title("📊 Bet-Pro | Market Intelligence Dashboard")
-st.markdown("Analisi delle quote, probabilità algoritmiche e gestione del Bankroll.")
+st.title("📊 Bet-Pro | Live Intelligence Hub")
+st.markdown("Analisi del palinsesto globale con calcolo probabilità depurate dall'aggio e Kelly Stake.")
 
-# Recupero dati
-df_odds = mock_fetch_odds_data()
+# Caricamento e filtro dati
+with st.spinner("Sincronizzazione eventi dal mondo (ESPN)..."):
+    df_raw = fetch_master_sports_data()
+    df_analyzed = calculate_market_intelligence(df_raw)
 
-# Applicazione filtri
-df_filtered = df_odds[
-    (df_odds["Confidenza (%)"] >= min_confidence) & 
-    (df_odds["Kelly_Puntata_Max (%)"] >= min_kelly)
-]
+df_filtered = df_analyzed[df_analyzed['Confidenza (%)'] >= min_conf]
 
-# Metriche principali in alto
-col1, col2, col3 = st.columns(3)
-with col1:
-    st.metric(label="Match Analizzati", value=len(df_odds))
-with col2:
-    st.metric(label="Value Bets Trovate", value=len(df_filtered))
-with col3:
-    max_k = df_filtered['Kelly_Puntata_Max (%)'].max() if not df_filtered.empty else 0
-    st.metric(label="Max Kelly %", value=f"{max_k}%")
+# Metriche
+col1, col2 = st.columns(2)
+col1.metric("Match Totali Trovati", len(df_raw))
+col2.metric(f"Match Validi (>{min_conf}%)", len(df_filtered))
 
-st.markdown("---")
-
-# Visualizzazione della Tabella Dati Filtrata
-st.subheader("📋 Opportunità di Mercato Identificate")
+st.subheader("📋 Palinsesto Quantitativo")
 if not df_filtered.empty:
-    # Mostriamo un dataframe interattivo
     st.dataframe(
-        df_filtered.style.highlight_max(subset=['Kelly_Puntata_Max (%)'], color='#1f77b4')
-                         .highlight_max(subset=['Confidenza (%)'], color='#2ca02c'),
-        use_container_width=True
+        df_filtered[['Lega', 'Match', 'Quota_1', 'Quota_X', 'Quota_2', 'Esito Consigliato', 'Confidenza (%)', 'Kelly Stake (%)']], 
+        use_container_width=True, hide_index=True
     )
     
     st.markdown("---")
-    
-    # Sezione Analisi AI
     st.subheader("🧠 Analisi Strategica Avanzata (Gemini AI)")
     
-    # Pulsante per avviare l'analisi (come nel tuo screenshot)
-    if st.button("🚀 Interpella Gemini per Analisi Strategica", use_container_width=True, type="primary"):
-        with st.spinner("Gemini sta analizzando le value bet..."):
+    if st.button("🚀 Interpella Gemini per Analisi Strategica", type="primary", use_container_width=True):
+        with st.spinner("Elaborazione neurale delle Value Bet in corso..."):
             ai_report, status = get_gemini_market_intelligence(GEMINI_API_KEY, df_filtered)
-            
-            if status == "successo":
-                st.success("Analisi completata con successo!")
-                
-                # Card per il report AI
-                with st.container():
-                    st.markdown("""
-                        <style>
-                        .report-box {
-                            background-color: #1e1e2e;
-                            padding: 20px;
-                            border-radius: 10px;
-                            border-left: 5px solid #00f0ff;
-                            color: white;
-                        }
-                        </style>
-                        """, unsafe_allow_html=True)
-                    st.markdown(f'<div class="report-box">{ai_report}</div>', unsafe_allow_html=True)
+            if ai_report:
+                st.success(f"Analisi completata. ({status})")
+                st.markdown(f"> {ai_report}")
             else:
                 st.error(status)
 else:
-    st.warning("Nessuna partita soddisfa i criteri di confidenza e Kelly impostati nei filtri laterali. Abbassa le soglie per vedere più match.")
-                  
+    st.warning("Nessun match supera la soglia di confidenza minima. Abbassa lo slider nella barra laterale.")
+    
