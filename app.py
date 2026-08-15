@@ -17,77 +17,51 @@ def fetch_all_available_odds(api_key):
     if not api_key:
         return pd.DataFrame()
         
-    # 1. Recupera la lista completa di tutti gli sport/campionati attivi dall'API
+    # 1. Recupera la lista completa di TUTTI gli sport (senza filtri)
     sports_url = f"https://api.the-odds-api.com/v4/sports/?apiKey={api_key}"
     try:
-        sports_res = requests.get(sports_url, timeout=5)
+        sports_res = requests.get(sports_url, timeout=10)
         if sports_res.status_code != 200:
             return pd.DataFrame()
         sports_data = sports_res.json()
     except:
         return pd.DataFrame()
-        
-    # Filtriamo solo le categorie di calcio (o espandibile ad altri sport)
-    soccer_sports = [s['key'] for s in sports_data if "soccer" in s.get('key', '').lower()]
+    
+    # Prendiamo le chiavi di TUTTI gli sport attivi
+    all_sports = [s['key'] for s in sports_data if s.get('active')]
     
     matches_list = []
-    now_utc = datetime.now(timezone.utc)
-    time_from = now_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
-    time_to = (now_utc + timedelta(days=2)).strftime("%Y-%m-%dT23:59:59Z")
-    
-    # 2. Scansione massiva di ogni campionato di calcio trovato
-    for sport_key in soccer_sports:
-        url = f"https://api.the-odds-api.com/v4/sports/{sport_key}/odds/?regions=eu&markets=h2h,totals,btts&bookmakers=pinnacle,bet365&apiKey={api_key}&commenceTimeFrom={time_from}&commenceTimeTo={time_to}"
+    # Limitiamo a un numero gestibile di richieste per evitare timeout (es. i primi 15 sport)
+    for sport_key in all_sports[:15]: 
+        url = f"https://api.the-odds-api.com/v4/sports/{sport_key}/odds/?regions=eu&markets=h2h&apiKey={api_key}"
         try:
-            response = requests.get(url, timeout=4)
-            if response.status_code != 200:
-                continue
+            response = requests.get(url, timeout=3)
+            if response.status_code != 200: continue
             data = response.json()
+            
             for event in data:
-                home = event.get("home_team")
-                away = event.get("away_team")
-                sport_title = event.get("sport_title", "Calcio")
+                home = event.get("home_team", "N/A")
+                away = event.get("away_team", "N/A")
+                
+                # Estrazione quote (Moneyline / 1X2)
                 bookmakers = event.get("bookmakers", [])
                 if not bookmakers: continue
-                markets = bookmakers[0].get("markets", [])
+                outcomes = bookmakers[0]["markets"][0]["outcomes"]
                 
-                # Estrazione quote 1X2
-                h2h = next((m for m in markets if m["key"] == "h2h"), None)
-                q1, qx, q2 = 0.0, 0.0, 0.0
-                if h2h:
-                    for o in h2h.get("outcomes", []):
-                        if o["name"] == home: q1 = o["price"]
-                        elif o["name"] == away: q2 = o["price"]
-                        elif o["name"] == "Draw": qx = o["price"]
+                odds = {o["name"]: o["price"] for o in outcomes}
                 
-                # Estrazione quote Totals (Over/Under 2.5)
-                totals = next((m for m in markets if m["key"] == "totals"), None)
-                q_over = 0.0
-                if totals:
-                    over_o = next((o for o in totals.get("outcomes", []) if o["name"] == "Over" and o.get("point", 2.5) == 2.5), None)
-                    if over_o: q_over = over_o.get("price", 0.0)
-
-                # Estrazione quote BTTS (Goal/NoGoal)
-                btts = next((m for m in markets if m["key"] == "btts"), None)
-                q_goal = 0.0
-                if btts:
-                    yes_o = next((o for o in btts.get("outcomes", []) if o["name"] == "Yes"), None)
-                    if yes_o: q_goal = yes_o.get("price", 0.0)
-
-                if q1 > 0 and q2 > 0 and qx > 0:
-                    matches_list.append({
-                        "Lega": sport_title,
-                        "Match": f"{home} vs {away}",
-                        "Quota_1": q1,
-                        "Quota_X": qx,
-                        "Quota_2": q2,
-                        "Q_Over": q_over,
-                        "Q_Goal": q_goal
-                    })
+                matches_list.append({
+                    "Lega": event.get("sport_title"),
+                    "Match": f"{home} vs {away}",
+                    "Q1": odds.get(home, 0),
+                    "Q2": odds.get(away, 0),
+                    "Draw": odds.get("Draw", 1.0) # Per sport senza pareggio, il valore è 1.0
+                })
         except:
             continue
             
     return pd.DataFrame(matches_list)
+
 
 def get_fallback_matches():
     return pd.DataFrame([
