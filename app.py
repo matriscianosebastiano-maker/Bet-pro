@@ -3,43 +3,48 @@ import requests
 import pandas as pd
 import numpy as np
 from google import genai
+from datetime import datetime
 
 # --- CONFIGURAZIONE PAGINA ---
 st.set_page_config(page_title="Bet-Pro | Executive Hub", page_icon="🎯", layout="centered")
 GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "")
 ODDS_API_KEY = st.secrets.get("ODDS_API_KEY", "")
 
-# --- 1 & 2. ACQUISIZIONE DATI CON ORARI E LEGHE ---
+# --- 1 & 2. ACQUISIZIONE DINAMICA DI TUTTI I CAMPIONATI DI CALCIO DAL MONDO ---
 @st.cache_data(ttl=300)
-def fetch_market_odds(api_key):
+def fetch_all_world_soccer_odds(api_key):
     if not api_key:
         return pd.DataFrame()
         
-    priority_leagues = [
-        "soccer_italy_serie_a",
-        "soccer_epl",
-        "soccer_spain_la_liga",
-        "soccer_germany_bundesliga",
-        "soccer_france_ligue_1",
-        "soccer_uefa_champs_league"
-    ]
+    # Otteniamo l'elenco completo di tutti gli sport disponibili globalmente
+    sports_url = f"https://api.the-odds-api.com/v4/sports/?apiKey={api_key}"
+    try:
+        sports_res = requests.get(sports_url, timeout=10)
+        if sports_res.status_code != 200: return pd.DataFrame()
+        sports_data = sports_res.json()
+    except:
+        return pd.DataFrame()
+    
+    # Filtriamo automaticamente QUALSIASI campionato di calcio attivo nel mondo
+    all_soccer_keys = [s['key'] for s in sports_data if "soccer" in s.get('key', '').lower() and s.get('active', True)]
     
     matches_list = []
-    for sport_key in priority_leagues:
+    # Scansioniamo i campionati attivi limitandoci a un blocco efficiente per evitare timeout di rete
+    for sport_key in all_soccer_keys[:20]:
         url = f"https://api.the-odds-api.com/v4/sports/{sport_key}/odds/?regions=eu&markets=h2h,totals&apiKey={api_key}"
         try:
-            response = requests.get(url, timeout=5)
+            response = requests.get(url, timeout=3)
             if response.status_code != 200: continue
             data = response.json()
             
             for event in data:
                 home = event.get("home_team", "N/A")
                 away = event.get("away_team", "N/A")
-                sport_title = event.get("sport_title", sport_key.replace("soccer_", "").upper())
+                sport_title = event.get("sport_title", sport_key)
                 commence_time = event.get("commence_time", "")
                 
-                # Pulizia formato data/ora (es. 2026-08-22 16:30)
-                formatted_time = commence_time.replace("T", " ")[:16] if commence_time else "Da definire"
+                # Gestione e formattazione della data e ora dell'evento
+                formatted_time = commence_time.replace("T", " ")[:16] if commence_time else "In corso / Oggi"
                 
                 bookmakers = event.get("bookmakers", [])
                 if not bookmakers: continue
@@ -71,7 +76,11 @@ def fetch_market_odds(api_key):
         except:
             continue
             
-    return pd.DataFrame(matches_list)
+    df = pd.DataFrame(matches_list)
+    if not df.empty:
+        # Ordiniamo cronologicamente per data/ora del match
+        df = df.sort_values(by="Data_Ora").reset_index(drop=True)
+    return df
 
 # --- 3, 4 & 5. MODELLO MATEMATICO ---
 def apply_quantitative_intelligence(df):
@@ -102,53 +111,53 @@ def apply_quantitative_intelligence(df):
         })
     return pd.DataFrame(processed)
 
-# --- 6, 7 & 8. INTERFACCIA E SCHEDINA CON COMBO E CRONOLOGIA TEMPORALE ---
+# --- 6, 7 & 8. INTERFACCIA E SCHEDINA CON COMBO, ORARI E GLOBALE ---
 st.title("🎯 Bet-Pro | Executive Hub")
-st.markdown("Piattaforma di analisi dati di mercato, quote veritiere e intelligenza predittiva.")
+st.markdown("Piattaforma globale di analisi dati calcistici, quote e intelligenza predittiva.")
 
 if st.button("🚀 AVVIA ANALISI GLOBALE E COMPILA SCHEDINA", type="primary", use_container_width=True):
-    with st.spinner("Analisi cronologica e generazione combinazioni di mercato in corso..."):
-        df_raw = fetch_market_odds(ODDS_API_KEY)
+    with st.spinner("Scandagliando i campionati di tutto il mondo e calcolando le Combo..."):
+        df_raw = fetch_all_world_soccer_odds(ODDS_API_KEY)
         
         if df_raw.empty:
-            st.warning("Nessun match trovato al momento sui server.")
+            st.warning("Nessun match di calcio attivo trovato al momento sui server mondiali.")
         else:
             df_analyzed = apply_quantitative_intelligence(df_raw)
+            # Passiamo un subset ottimizzato all'IA per azzerare i tempi di latenza ed evitare timeout
             market_summary = df_analyzed.head(15).to_string(index=False)
             
-            # Prompt ottimizzato e alleggerito per evitare timeout, con obbligo di Combo e coerenza temporale
             prompt = f"""
-            Sei il risk manager di Bet-Pro. Ecco i match disponibili con data, ora e quote:
+            Sei il risk manager di Bet-Pro. Ecco i match di calcio globali ordinati per data e orario con relative quote:
             
             {market_summary}
             
-            REGOLE TASSATIVE PER LA RISPOSTA:
-            1. COERENZA TEMPORALE: Seleziona gli eventi tenendo conto di quando giocano (orari e date compatibili per una schedina multipla logica).
-            2. COMBO E MERCATI ALTERNATIVI: Non limitarti ai segni fissi 1X2. Per ogni match della schedina devi applicare classi di esito avanzate o COMBO obbligatorie (es. 1X + Under 3.5, X2 + Over 1.5, Goal + Over 2.5, ecc.) laddove il segno secco è rischioso.
-            3. Struttura l'output in Markdown pulito mostrando: Partita, Orario, Esito Consigliato (con Combo o Doppia Chance), Quota stimata e Motivazione tecnica. Calcola la quota totale della schedina.
+            REGOLE TASSATIVE:
+            1. CRONOLOGIA TEMPORALE: Considera con precisione la data e l'orario di ogni match per costruire una schedina multipla strutturata temporalmente in modo logico.
+            2. COMBO E MERCATI ALTERNATIVI OBBLIGATORI: Non limitarti ai segni fissi 1X2. Per ogni match inserito nella schedina, devi assolutamente generare classi di esito combinate o alternative (es. 1X + Under 3.5, X2 + Over 1.5, Goal + Over 2.5, Under 2.5 fisso) se il segno secco è rischioso.
+            3. Restituisci l'output pulito in Markdown indicando: Torneo, Partita, Data/Ora, Esito Consigliato (con Combo o opzione laterale), Quota stimata e Motivazione tecnica breve. Calcola la quota totale finale.
             """
             
             ai_output = None
             try:
                 client = genai.Client(api_key=GEMINI_API_KEY)
-                # Utilizzo di configurazione pulita ed evitiamo payload pesanti
                 response = client.models.generate_content(
                     model="gemini-3.5-flash", 
                     contents=prompt
                 )
                 if response and response.text:
                     ai_output = response.text
-            except Exception as e:
+            except Exception:
                 ai_output = None
                 
             if ai_output:
-                st.subheader("📋 Schedina Consigliata del Giorno (con Combo e Orari)")
+                st.subheader("📋 Schedina Consigliata Globale (con Combo e Orari)")
                 st.markdown(ai_output)
             else:
-                st.error("⚠️ Si è verificato un timeout con l'API di Gemini. Riprova tra un istante a ripremere il pulsante per completare l'analisi.")
+                st.warning("⚠️ L'analisi IA ha richiesto troppo tempo. Riprova subito premendo il tasto per ottenere il responso completo.")
                 
             st.divider()
-            st.subheader("📊 Tabella Analitica Completa dei Match")
+            st.subheader("📊 Tabella Analitica Completa dei Match Mondiali")
             st.dataframe(df_analyzed, use_container_width=True)
 
 st.info("ℹ️ Il sistema si aggiorna dinamicamente a ogni nuovo caricamento della pagina.")
+            
