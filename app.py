@@ -4,27 +4,52 @@ import pandas as pd
 import google.generativeai as genai
 
 # --- CONFIGURAZIONE PAGINA ---
-st.set_page_config(page_title="Bet-Pro AI | Palinsesto Pubblico & Algoritmo", page_icon="⚽", layout="wide")
-st.title("⚽ Bet-Pro AI Engine | Feed Pubblico & Analisi Algoritmica")
-st.markdown("Sistema di acquisizione dati tramite endpoint pubblici e gratuiti (Zero Scraping, Zero Costi) con elaborazione pronostici IA.")
+st.set_page_config(page_title="Bet-Pro AI | Palinsesto Multisport Globale", page_icon="🏅", layout="wide")
+st.title("🏅 Bet-Pro AI Engine | Feed Multisport & Analisi Algoritmica")
+st.markdown("Sistema integrato di acquisizione dati da tutti gli sport e campionati globali (ESPN Public Feed) con elaborazione pronostici IA.")
 
-# --- CHIAVE API GEMINI ---
-try:
-    GEMINI_KEY = st.secrets["GEMINI_KEY"]
-    genai.configure(api_key=GEMINI_KEY)
-    model = genai.GenerativeModel('gemini-1.5-flash')
-except Exception as e:
-    st.error(f"⚠️ Errore di configurazione API Gemini nei Secrets: {e}")
-    st.stop()
+# --- GESTIONE CHIAVI API (Con fallback in Sidebar) ---
+st.sidebar.header("⚙️ Configurazione Chiavi")
+gemini_input_key = st.sidebar.text_input("Inserisci Gemini API Key", type="password")
 
-# --- FUNZIONE DI RECUPERO DATI GRATUITI DA ESPN ---
+api_key = None
+if gemini_input_key:
+    api_key = gemini_input_key
+else:
+    try:
+        api_key = st.secrets["GEMINI_KEY"]
+    except Exception:
+        pass
+
+if not api_key:
+    st.sidebar.warning("⚠️ Inserisci la tua Gemini API Key per attivare l'analisi IA.")
+
+# --- MOTORE DI RECUPERO DATI MULTISPORT DA ESPN ---
 @st.cache_data(ttl=300)
-def fetch_free_sports_data():
+def fetch_all_sports_schedules():
+    # Elenco completo ed esteso di tutti gli sport e campionati disponibili su ESPN
     endpoints = [
-        {"sport": "soccer", "league": "ita.1", "name": "Serie A"},
-        {"sport": "soccer", "league": "eng.1", "name": "Premier League"},
-        {"sport": "soccer", "league": "uefa.champions", "name": "Champions League"},
-        {"sport": "basketball", "league": "nba", "name": "NBA"}
+        # Calcio Europeo e Internazionale
+        {"sport": "soccer", "league": "ita.1", "name": "Serie A (Calcio)"},
+        {"sport": "soccer", "league": "eng.1", "name": "Premier League (Calcio)"},
+        {"sport": "soccer", "league": "esp.1", "name": "La Liga (Calcio)"},
+        {"sport": "soccer", "league": "ger.1", "name": "Bundesliga (Calcio)"},
+        {"sport": "soccer", "league": "fra.1", "name": "Ligue 1 (Calcio)"},
+        {"sport": "soccer", "league": "uefa.champions", "name": "Champions League (Calcio)"},
+        {"sport": "soccer", "league": "uefa.europa", "name": "Europa League (Calcio)"},
+        
+        # Basket
+        {"sport": "basketball", "league": "nba", "name": "NBA (Basket)"},
+        {"sport": "basketball", "league": "mens-college-basketball", "name": "NCAA Basket (USA)"},
+        
+        # Tennis
+        {"sport": "tennis", "league": "atp", "name": "Tennis ATP"},
+        {"sport": "tennis", "league": "wta", "name": "Tennis WTA"},
+        
+        # Altri Sport USA / Globali
+        {"sport": "baseball", "league": "mlb", "name": "MLB (Baseball)"},
+        {"sport": "hockey", "league": "nhl", "name": "NHL (Hockey su ghiaccio)"},
+        {"sport": "football", "league": "nfl", "name": "NFL (Football Americano)"}
     ]
     
     all_matches = []
@@ -32,7 +57,7 @@ def fetch_free_sports_data():
     for ep in endpoints:
         url = f"https://site.api.espn.com/apis/site/v2/sports/{ep['sport']}/{ep['league']}/scoreboard"
         try:
-            response = requests.get(url, timeout=5)
+            response = requests.get(url, timeout=4)
             if response.status_code == 200:
                 data = response.json()
                 events = data.get("events", [])
@@ -44,8 +69,7 @@ def fetch_free_sports_data():
                     competitions = event.get("competitions", [{}])[0]
                     competitors = competitions.get("competitors", [])
                     
-                    home_team = "Home"
-                    away_team = "Away"
+                    home_team, away_team = "Home", "Away"
                     for c in competitors:
                         if c.get("homeAway") == "home":
                             home_team = c.get("team", {}).get("displayName", "Home")
@@ -53,60 +77,58 @@ def fetch_free_sports_data():
                             away_team = c.get("team", {}).get("displayName", "Away")
                             
                     all_matches.append({
-                        "Competizione": ep["name"],
-                        "Match": f"{home_team} vs {away_team}",
+                        "Sport / Lega": ep["name"],
+                        "Match": f"{home_team} vs {away_team}" if home_team != "Home" else match_name,
                         "Data": match_date[:10] if match_date else "N/A",
-                        "Stato": status,
-                        "Fornitore": "ESPN Public Feed"
+                        "Stato": status
                     })
         except Exception:
             continue
             
-    # Fallback di sicurezza per garantire continuità visiva della tabella
-    if not all_matches:
-        all_matches = [
-            {"Competizione": "Serie A", "Match": "Juventus vs Inter", "Data": "2026-08-15", "Stato": "Programmato", "Fornitore": "Fallback Engine"},
-            {"Competizione": "Premier League", "Match": "Manchester City vs Arsenal", "Data": "2026-08-15", "Stato": "Programmato", "Fornitore": "Fallback Engine"},
-            {"Competizione": "NBA", "Match": "Los Angeles Lakers vs Boston Celtics", "Data": "2026-08-15", "Stato": "Programmato", "Fornitore": "Fallback Engine"}
-        ]
-        
     return pd.DataFrame(all_matches)
 
-# --- INTERFACCIA UTENTE STREAMLIT ---
-if st.button("🚀 Sincronizza Palinsesto Pubblico & Calcola Esiti IA", use_container_width=True, type="primary"):
-    with st.spinner("Scansione endpoint pubblici in corso... Estrazione eventi in formato strutturato..."):
-        df_events = fetch_free_sports_data()
+# --- INTERFACCIA PRINCIPALE ---
+if st.button("🚀 Sincronizza Tutti gli Sport & Analisi IA", use_container_width=True, type="primary"):
+    with st.spinner("Scansione in corso di tutti i feed sportivi globali (Calcio, Basket, Tennis, MLB, NHL, NFL)..."):
+        df_events = fetch_all_sports_schedules()
         
     if df_events.empty:
-        st.warning("Nessun evento disponibile al momento.")
+        st.warning("Nessun evento disponibile al momento sui server.")
     else:
-        st.success(f"✅ Sincronizzazione completata: trovati {len(df_events)} eventi sportivi attivi.")
+        st.success(f"✅ Sincronizzazione completata: trovati {len(df_events)} eventi attivi in tutti gli sport.")
         
-        # Elaborazione algoritmica / AI degli esiti
-        with st.spinner("L'intelligenza artificiale sta elaborando i pronostici statistici e probabilistici per ogni match..."):
-            sample_data = df_events.to_string()
-            prompt = f"""
-            Agisci come un Quantitative Sports Analyst. 
-            Analizza la seguente lista di eventi sportivi estratti dai feed pubblici:
-            
-            {sample_data}
-            
-            Per ogni riga, genera un pronostico strutturato comprendente:
-            1. Match
-            2. Esito Matematico Consigliato (es. 1X, Over 2.5, Gol, ecc.)
-            3. Indice di Confidenza (es. Alta, Media, Rischio Calcolato)
-            4. Motivazione sintetica basata su algoritmi stocastici.
-            
-            Restituisci il risultato formattato chiaramente come tabella Markdown.
-            """
-            try:
-                response = model.generate_content(prompt)
-                if response and hasattr(response, 'text') and response.text:
-                    st.markdown("### 🤖 Pronostici & Esiti Algoritmici dell'IA")
-                    st.markdown(response.text)
-            except Exception as e:
-                st.error(f"Errore durante la generazione dei pronostici IA: {e}")
-                
-        st.divider()
-        st.subheader("📋 Dataset Eventi Sincronizzati")
+        st.subheader("📋 Dataset Globale Eventi Multisport")
         st.dataframe(df_events, use_container_width=True, hide_index=True)
+        
+        # Sezione IA per l'analisi e pronostici
+        if not api_key:
+            st.error("⚠️ Impossibile generare i pronostici IA: inserisci la chiave API nella barra laterale (Sidebar).")
+        else:
+            try:
+                genai.configure(api_key=api_key)
+                ai_model = genai.GenerativeModel('gemini-1.5-flash')
+                
+                with st.spinner("L'intelligenza artificiale sta elaborando i pronostici statistici per tutte le discipline..."):
+                    # Prendiamo un campione rappresentativo se il dataset è molto ampio per evitare limiti di token
+                    sample_data = df_events.head(25).to_string()
+                    prompt = f"""
+                    Agisci come un Quantitative Sports Analyst esperto di tutti i mercati sportivi (Calcio, Basket, Tennis, US Sports). 
+                    Analizza la seguente lista di eventi sportivi multisport:
+                    
+                    {sample_data}
+                    
+                    Per ogni riga, genera un pronostico strutturato in tabella Markdown comprendente:
+                    1. Sport / Lega
+                    2. Match
+                    3. Esito Matematico Consigliato (es. 1X2, Over/Under, Moneyline, Spread)
+                    4. Indice di Confidenza (Alta, Media, Rischio Calcolato)
+                    5. Motivazione sintetica basata su algoritmi stocastici.
+                    """
+                    
+                    response = ai_model.generate_content(prompt)
+                    if response and hasattr(response, 'text'):
+                        st.markdown("### 🤖 Pronostici & Esiti Algoritmici Multisport dell'IA")
+                        st.markdown(response.text)
+            except Exception as e:
+                st.error(f"⚠️ Errore di autenticazione o generazione IA: {e}")
+                
