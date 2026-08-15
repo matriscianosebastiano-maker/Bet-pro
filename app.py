@@ -9,7 +9,7 @@ st.set_page_config(page_title="Bet-Pro | Executive Hub", page_icon="🎯", layou
 GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "")
 ODDS_API_KEY = st.secrets.get("ODDS_API_KEY", "")
 
-# --- 1 & 2. ACQUISIZIONE VELOCE E MIRATA (Campionati, Coppe e Trofei) ---
+# --- 1 & 2. ACQUISIZIONE ROBUSTA CON FALLBACK GLOBALE ---
 @st.cache_data(ttl=300)
 def fetch_all_world_soccer_odds(api_key):
     if not api_key:
@@ -17,21 +17,21 @@ def fetch_all_world_soccer_odds(api_key):
         
     sports_url = f"https://api.the-odds-api.com/v4/sports/?apiKey={api_key}"
     try:
-        sports_res = requests.get(sports_url, timeout=8)
+        sports_res = requests.get(sports_url, timeout=10)
         if sports_res.status_code != 200: return pd.DataFrame()
         sports_data = sports_res.json()
     except:
         return pd.DataFrame()
     
-    # Selezioniamo tutti i tornei di calcio attivi (dando priorità a coppe, internazionali e campionati in corso)
-    all_soccer_keys = [s['key'] for s in sports_data if "soccer" in s.get('key', '').lower() and s.get('active', True)]
+    # Filtriamo tutte le chiavi relative al calcio presenti nell'API
+    all_soccer_keys = [s['key'] for s in sports_data if "soccer" in s.get('key', '').lower()]
     
     matches_list = []
-    # Limitiamo a 15 tornei chiave per garantire la massima velocità ed evitare qualsiasi blocco di rete
-    for sport_key in all_soccer_keys[:15]:
+    # Scandagliamo fino a 25 tornei disponibili globalmente (campionati, coppe e trofei)
+    for sport_key in all_soccer_keys[:25]:
         url = f"https://api.the-odds-api.com/v4/sports/{sport_key}/odds/?regions=eu&markets=h2h,totals&apiKey={api_key}"
         try:
-            response = requests.get(url, timeout=2.5)
+            response = requests.get(url, timeout=4)
             if response.status_code != 200: continue
             data = response.json()
             
@@ -41,7 +41,7 @@ def fetch_all_world_soccer_odds(api_key):
                 sport_title = event.get("sport_title", sport_key.replace("soccer_", "").upper())
                 commence_time = event.get("commence_time", "")
                 
-                formatted_time = commence_time.replace("T", " ")[:16] if commence_time else "In corso"
+                formatted_time = commence_time.replace("T", " ")[:16] if commence_time else "In corso / Oggi"
                 
                 bookmakers = event.get("bookmakers", [])
                 if not bookmakers: continue
@@ -107,30 +107,29 @@ def apply_quantitative_intelligence(df):
         })
     return pd.DataFrame(processed)
 
-# --- 6, 7 & 8. INTERFACCIA E SCHEDINA PROFESSIONALE OTTIMIZZATA ---
+# --- 6, 7 & 8. INTERFACCIA E SCHEDINA PROFESSIONALE ---
 st.title("🎯 Bet-Pro | Executive Hub")
 st.markdown("Piattaforma globale di analisi dati per campionati, coppe, trofei e intelligenza predittiva.")
 
 if st.button("🚀 AVVIA ANALISI GLOBALE E COMPILA SCHEDINA", type="primary", use_container_width=True):
-    with st.spinner("Elaborazione flussi di quota e calcolo combinato in corso..."):
+    with st.spinner("Connessione ai server globali e calcolo delle quote in corso..."):
         df_raw = fetch_all_world_soccer_odds(ODDS_API_KEY)
         
         if df_raw.empty:
-            st.warning("Nessun match o coppa attiva trovata al momento sui server.")
+            st.warning("⚠️ Nessun match trovato al momento. Verifica che la chiave API (`ODDS_API_KEY`) sia attiva e valida nei Secret di Streamlit.")
         else:
             df_analyzed = apply_quantitative_intelligence(df_raw)
-            # Tagliamo a 12 match top per garantire risposta fulminea e zero timeout dall'IA
-            market_summary = df_analyzed.head(12).to_string(index=False)
+            market_summary = df_analyzed.head(15).to_string(index=False)
             
             prompt = f"""
-            Sei il risk manager e capo analista di Bet-Pro. Ecco i match disponibili (tra coppe, trofei e campionati), ordinati per data e orario con relative quote:
+            Sei il risk manager e capo analista di Bet-Pro. Ecco i match disponibili (tra coppe, trofei e campionati mondiali), ordinati per data e orario con relative quote:
             
             {market_summary}
             
             DIRETTIVE OPERATIVE:
             1. COERENZA CRONOLOGICA: Costruisci una schedina multipla selezionando eventi con date e orari logicamente concatenabili.
-            2. FOCUS SU COPPE E TROFEI: Se sono presenti turni di coppa o trofei, valuta l'impatto della competizione sul match (es. approccio prudente, stanchezza o turn-over).
-            3. COMBO E MERCATI ALTERNATIVI OBBLIGATORI: Vietato limitarsi al segno secco 1X2 se rischioso. Per ogni match della schedina compila una COMBO o un esito alternativo professionale (es. 1X + Under 3.5, X2 + Over 1.5, Goal + Over 2.5, Under 2.5).
+            2. FOCUS SU COPPE E TROFEI: Valuta attentamente l'impatto e la tensione agonistica delle coppe o dei trofei internazionali presenti.
+            3. COMBO E MERCATI ALTERNATIVI OBBLIGATORI: Non limitarti al segno secco 1X2 se rischioso. Per ogni match della schedina compila una COMBO o un esito alternativo professionale (es. 1X + Under 3.5, X2 + Over 1.5, Goal + Over 2.5, Under 2.5).
             4. RESTITUZIONE: Fornisci l'output pulito in Markdown indicando: Competizione, Partita, Data/Ora, Esito Consigliato (con Combo o opzione laterale), Quota stimata, Motivazione sintetica e Quota Totale della schedina.
             """
             
@@ -150,11 +149,10 @@ if st.button("🚀 AVVIA ANALISI GLOBALE E COMPILA SCHEDINA", type="primary", us
                 st.subheader("📋 Schedina Consigliata (Coppe, Trofei e Campionati)")
                 st.markdown(ai_output)
             else:
-                st.error("⚠️ Si è verificato un ritardo nella risposta dell'IA. Clicca di nuovo sul pulsante per completare l'analisi istantaneamente.")
+                st.warning("⚠️ L'analisi IA ha impiegato troppo tempo. Clicca di nuovo sul pulsante per generare la schedina.")
                 
             st.divider()
             st.subheader("📊 Tabella Analitica Completa")
             st.dataframe(df_analyzed, use_container_width=True)
 
 st.info("ℹ️ Il sistema si aggiorna dinamicamente a ogni nuovo caricamento della pagina.")
-                                       
