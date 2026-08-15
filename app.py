@@ -1,6 +1,7 @@
 import streamlit as st
 import requests
 import pandas as pd
+from datetime import datetime
 from google import genai
 
 # --- 1. SETUP E CONFIGURAZIONE ---
@@ -46,12 +47,15 @@ def fetch_real_odds_data(api_key):
             
             # 2. Estrazione Mercato Under/Over (Totals)
             totals = next((m for m in markets if m["key"] == "totals"), None)
-            over_val, over_price = "N/A", 0.0
+            over_val, over_price, under_val, under_price = "N/A", 0.0, "N/A", 0.0
             if totals:
                 for o in totals.get("outcomes", []):
                     if o["name"] == "Over":
                         over_val = f"O {o.get('point', 2.5)}"
                         over_price = o.get("price", 0.0)
+                    elif o["name"] == "Under":
+                        under_val = f"U {o.get('point', 2.5)}"
+                        under_price = o.get("price", 0.0)
 
             # 3. Estrazione Mercato Handicap (Spreads)
             spreads = next((m for m in markets if m["key"] == "spreads"), None)
@@ -70,7 +74,8 @@ def fetch_real_odds_data(api_key):
                     "Quota_1": q1,
                     "Quota_X": qx,
                     "Quota_2": q2,
-                    "Under/Over Principale": f"{over_val} ({over_price})" if over_price > 0 else "N/A",
+                    "Under/Over": f"{over_val} ({over_price})" if over_price > 0 else "N/A",
+                    "Under_Price": over_price,
                     "Handicap": handicap_str
                 })
                     
@@ -81,11 +86,11 @@ def fetch_real_odds_data(api_key):
 
 def generate_fallback_data():
     return pd.DataFrame([
-        {"Lega": "Serie A (MOCK)", "Match": "Inter vs Monza", "Quota_1": 1.35, "Quota_X": 5.25, "Quota_2": 9.00, "Under/Over Principale": "O 2.5 (1.70)", "Handicap": "Inter (-1.5) @ 2.05"},
-        {"Lega": "Serie A (MOCK)", "Match": "Juventus vs Como", "Quota_1": 1.40, "Quota_X": 4.80, "Quota_2": 8.50, "Under/Over Principale": "O 2.5 (1.75)", "Handicap": "Juventus (-1.5) @ 2.15"}
+        {"Lega": "Serie A (MOCK)", "Match": "Inter vs Monza", "Quota_1": 1.35, "Quota_X": 5.25, "Quota_2": 9.00, "Under/Over": "O 2.5 (1.70)", "Under_Price": 1.70, "Handicap": "Inter (-1.5) @ 2.05"},
+        {"Lega": "Serie A (MOCK)", "Match": "Juventus vs Como", "Quota_1": 1.40, "Quota_X": 4.80, "Quota_2": 8.50, "Under/Over": "O 2.5 (1.75)", "Under_Price": 1.75, "Handicap": "Juventus (-1.5) @ 2.15"}
     ])
 
-# --- 3. MOTORE MATEMATICO ---
+# --- 3. MOTORE MATEMATICO (1X2 + SELEZIONE MERCATI ALTERNATIVI) ---
 def calculate_market_intelligence(df):
     if df.empty: return df
     
@@ -98,11 +103,11 @@ def calculate_market_intelligence(df):
     df['Prob_X_Norm'] = df['Prob_X_Imp'] / total_prob
     df['Prob_2_Norm'] = df['Prob_2_Imp'] / total_prob
     
-    best_outcomes, confidences, kelly_stakes = [], [], []
+    best_outcomes, confidences, kelly_stakes, consigli_giro = [], [], [], []
     
     for _, row in df.iterrows():
-        probs = {'1': row['Prob_1_Norm'], 'X': row['Prob_X_Norm'], '2': row['Prob_2_Norm']}
-        quotes = {'1': row['Quota_1'], 'X': row['Quota_X'], '2': row['Quota_2']}
+        probs = {'1 (Casa)': row['Prob_1_Norm'], 'X (Pareggio)': row['Prob_X_Norm'], '2 (Trasferta)': row['Prob_2_Norm']}
+        quotes = {'1 (Casa)': row['Quota_1'], 'X (Pareggio)': row['Quota_X'], '2 (Trasferta)': row['Quota_2']}
         
         best_choice = max(probs, key=probs.get)
         conf_val = probs[best_choice]
@@ -115,36 +120,43 @@ def calculate_market_intelligence(df):
         kelly = ((b * p - q) / b) * 100 if b > 0 else 0
         kelly_pct = max(0.0, round(kelly * 0.25, 2))
         
+        # Logica di proposta bet alternativa (es. se quota 1 è molto bassa, suggeriamo l'Under o Handicap)
+        consiglio = f"Esito Consigliato: {best_choice} a Q. {quota}"
+        if row['Quota_1'] < 1.40:
+            consiglio = f"Combo / Alternativa: Over/Under o 1 Handicap (Quota 1 troppo bassa: {row['Quota_1']})"
+
         best_outcomes.append(best_choice)
         confidences.append(int(conf_val * 100))
         kelly_stakes.append(kelly_pct)
+        consigli_giro.append(consiglio)
         
     df['Esito Algoritmo'] = best_outcomes
     df['Confidenza (%)'] = confidences
     df['Kelly Stake (%)'] = kelly_stakes
+    df['Consiglio di Gioco Oggi'] = consigli_giro
     
     return df
 
 # --- 4. CONNESSIONE GEMINI SDK UFFICIALE (google-genai) ---
 def get_gemini_market_intelligence(api_key, df_filtered, model_name):
     df_ai = df_filtered.sort_values(by="Confidenza (%)", ascending=False).head(10)
-    market_summary = df_ai[['Lega', 'Match', 'Quota_1', 'Quota_X', 'Quota_2', 'Under/Over Principale', 'Handicap', 'Esito Algoritmo', 'Kelly Stake (%)']].to_string(index=False)
+    market_summary = df_ai[['Lega', 'Match', 'Quota_1', 'Quota_X', 'Quota_2', 'Under/Over', 'Handicap', 'Esito Algoritmo', 'Kelly Stake (%)']].to_string(index=False)
     
     prompt = f"""
-    Agisci come un analista quantitativo di scommesse sportive. 
-    Analizza queste partite processate con quote 1X2, Under/Over, Handicap e Criterio di Kelly:
+    Agisci come un analista quantitativo di scommesse sportive professionista. 
+    Analizza queste partite odierne con quote 1X2, Under/Over, Handicap e Criterio di Kelly:
     
     {market_summary}
     
     Compiti:
-    1. Evidenzia le 2 migliori selezioni complessive (valutando anche i mercati di spread o totali se rilevanti).
-    2. Spiega brevemente la logica matematica e di rischio dietro queste scelte.
+    1. Seleziona le 2 migliori scommesse da piazzare OGGI in singola o doppia sicura.
+    2. Valuta se per alcune partite conviene virare su mercati alternativi (Under/Over, Gol/No Gol, Handicap) anziché sul semplice 1X2 se la quota è troppo bassa.
+    3. Spiega la motivazione tecnica.
     
-    Rispondi in Markdown, sii diretto e professionale.
+    Rispondi in Markdown, sii diretto e operativo per la scommessa immediata.
     """
     
     try:
-        # Inizializzazione del client ufficiale google-genai
         client = genai.Client(api_key=api_key)
         response = client.models.generate_content(
             model=model_name,
@@ -163,7 +175,8 @@ with st.sidebar:
     st.markdown("---")
     
     st.subheader("1. Modello IA")
-    selected_model = st.selectbox("Seleziona Modello", ("gemini-2.5-flash", "gemini-2.5-pro"))
+    # Aggiornato al modello standard 3.6-flash attualmente supportato
+    selected_model = st.selectbox("Seleziona Modello", ("gemini-3.6-flash", "gemini-3.5-flash"))
     
     st.markdown("---")
     st.subheader("2. Stato Connessioni")
@@ -184,11 +197,11 @@ with st.sidebar:
 st.title("📊 Bet-Pro | Advanced Intelligence Hub")
 
 # Sincronizzazione dati
-with st.spinner("Sincronizzazione mercati in corso..."):
+with st.spinner("Sincronizzazione mercati odierni in corso..."):
     if ODDS_API_KEY:
         df_raw = fetch_real_odds_data(ODDS_API_KEY)
         if df_raw.empty:
-            st.warning("Nessun dato trovato o chiave non valida. Caricati dati di test.")
+            st.warning("Nessun match trovato oggi o chiave non valida. Caricati dati di test.")
             df_raw = generate_fallback_data()
     else:
         df_raw = generate_fallback_data()
@@ -198,32 +211,32 @@ with st.spinner("Sincronizzazione mercati in corso..."):
 df_filtered = df_analyzed[df_analyzed['Confidenza (%)'] >= min_conf]
 
 col1, col2, col3 = st.columns(3)
-col1.metric("Match Totali", len(df_raw))
+col1.metric("Match Totali Oggi", len(df_raw))
 col2.metric(f"Match Validi (>{min_conf}%)", len(df_filtered))
 if not df_filtered.empty:
     col3.metric("Max Kelly Stake", f"{df_filtered['Kelly Stake (%)'].max()}%")
 
 st.markdown("---")
-st.subheader("📋 Palinsesto Multi-Mercato Elaborato")
+st.subheader("📋 Palinsesto e Mercati Multipli (1X2, Under/Over, Handicap)")
 
 if not df_filtered.empty:
     st.dataframe(
-        df_filtered[['Lega', 'Match', 'Quota_1', 'Quota_X', 'Quota_2', 'Under/Over Principale', 'Handicap', 'Esito Algoritmo', 'Confidenza (%)', 'Kelly Stake (%)']], 
+        df_filtered[['Lega', 'Match', 'Quota_1', 'Quota_X', 'Quota_2', 'Under/Over', 'Handicap', 'Esito Algoritmo', 'Confidenza (%)', 'Kelly Stake (%)', 'Consiglio di Gioco Oggi']], 
         use_container_width=True, 
         hide_index=True
     )
     
     st.markdown("---")
-    st.subheader("🧠 Interrogazione Motore AI")
+    st.subheader("🎯 Cosa giocare OGGI (Analisi Rapida)")
     
-    if st.button(f"🚀 Avvia Analisi Strategica con {selected_model}", type="primary", use_container_width=True):
+    if st.button(f"🚀 Ottieni la giocata pronta con {selected_model}", type="primary", use_container_width=True):
         if not GEMINI_API_KEY:
             st.error("Chiave API di Gemini mancante nei Secrets.")
         else:
             with st.spinner(f"Elaborazione in corso con {selected_model}..."):
                 ai_report, status = get_gemini_market_intelligence(GEMINI_API_KEY, df_filtered, selected_model)
                 if ai_report:
-                    st.success("Analisi completata con successo.")
+                    st.success("Analisi e schedina pronte!")
                     st.markdown(f"> {ai_report}")
                 else:
                     st.error(status)
