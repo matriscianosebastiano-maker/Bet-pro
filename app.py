@@ -1,11 +1,14 @@
 import streamlit as st
 import requests
 import pandas as pd
+from google import genai
 
 # --- 1. SETUP E CONFIGURAZIONE ---
 st.set_page_config(page_title="Bet-Pro | Intelligence", page_icon="🎯", layout="wide")
 
-DEFAULT_GEMINI_KEY = "AQ.Ab8RN6JgwZVuzMONM_Zmn_IlwL-PqY9-Sdu3Bxw8jxDNeAfBwg"
+# Prelevamento automatico delle chiavi dai Secrets di Streamlit
+GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "")
+ODDS_API_KEY = st.secrets.get("ODDS_API_KEY", "")
 
 # --- 2. MOTORE DI ACQUISIZIONE ESTESO (1X2, UNDER/OVER, HANDICAP) ---
 @st.cache_data(ttl=300)
@@ -14,7 +17,6 @@ def fetch_real_odds_data(api_key):
     if not api_key:
         return pd.DataFrame()
         
-    # Richiediamo esplicitamente h2h (1X2), spreads (handicap) e totals (under/over)
     url = f"https://api.the-odds-api.com/v4/sports/soccer/odds/?regions=eu&markets=h2h,spreads,totals&bookmakers=pinnacle,bet365&apiKey={api_key}"
     
     try:
@@ -42,23 +44,19 @@ def fetch_real_odds_data(api_key):
                     elif o["name"] == away_team: q2 = o["price"]
                     elif o["name"] == "Draw": qx = o["price"]
             
-            # 2. Estrazione Mercato Under/Over (Totals - es. Linea 2.5)
+            # 2. Estrazione Mercato Under/Over (Totals)
             totals = next((m for m in markets if m["key"] == "totals"), None)
-            over_val, under_val, over_price, under_price = "N/A", "N/A", 0.0, 0.0
+            over_val, over_price = "N/A", 0.0
             if totals:
                 for o in totals.get("outcomes", []):
                     if o["name"] == "Over":
                         over_val = f"O {o.get('point', 2.5)}"
                         over_price = o.get("price", 0.0)
-                    elif o["name"] == "Under":
-                        under_val = f"U {o.get('point', 2.5)}"
-                        under_price = o.get("price", 0.0)
 
             # 3. Estrazione Mercato Handicap (Spreads)
             spreads = next((m for m in markets if m["key"] == "spreads"), None)
             handicap_str = "N/A"
             if spreads:
-                # Prendiamo la linea di spread della squadra di casa come riferimento principale
                 home_spread = next((o for o in spreads.get("outcomes", []) if o["name"] == home_team), None)
                 if home_spread:
                     point = home_spread.get("point", 0)
@@ -127,7 +125,7 @@ def calculate_market_intelligence(df):
     
     return df
 
-# --- 4. CONNESSIONE GEMINI REST API (FIX URL CORRETTO) ---
+# --- 4. CONNESSIONE GEMINI SDK UFFICIALE (google-genai) ---
 def get_gemini_market_intelligence(api_key, df_filtered, model_name):
     df_ai = df_filtered.sort_values(by="Confidenza (%)", ascending=False).head(10)
     market_summary = df_ai[['Lega', 'Match', 'Quota_1', 'Quota_X', 'Quota_2', 'Under/Over Principale', 'Handicap', 'Esito Algoritmo', 'Kelly Stake (%)']].to_string(index=False)
@@ -145,21 +143,19 @@ def get_gemini_market_intelligence(api_key, df_filtered, model_name):
     Rispondi in Markdown, sii diretto e professionale.
     """
     
-    # URL CORRETTO: rimosso il suffisso '-latest' che causava l'errore 404
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
-    headers = {'Content-Type': 'application/json'}
-    payload = {"contents": [{"parts": [{"text": prompt}]}]}
-    
     try:
-        response = requests.post(url, headers=headers, json=payload)
-        if response.status_code == 200:
-            data = response.json()
-            testo = data['candidates'][0]['content']['parts'][0]['text']
-            return testo, "Successo"
+        # Inizializzazione del client ufficiale google-genai
+        client = genai.Client(api_key=api_key)
+        response = client.models.generate_content(
+            model=model_name,
+            contents=prompt,
+        )
+        if response and response.text:
+            return response.text, "Successo"
         else:
-            return None, f"Errore API {response.status_code}: {response.text}"
+            return None, "Risposta vuota ricevuta dal modello."
     except Exception as e:
-        return None, f"Errore di Connessione: {str(e)}"
+        return None, f"Errore SDK Gemini: {str(e)}"
 
 # --- 5. INTERFACCIA UTENTE ---
 with st.sidebar:
@@ -167,27 +163,32 @@ with st.sidebar:
     st.markdown("---")
     
     st.subheader("1. Modello IA")
-    selected_model = st.selectbox("Seleziona Modello", ("gemini-1.5-flash", "gemini-pro"))
-    gemini_key_input = st.text_input("Gemini API Key", value=DEFAULT_GEMINI_KEY, type="password")
+    selected_model = st.selectbox("Seleziona Modello", ("gemini-2.5-flash", "gemini-2.5-pro"))
     
     st.markdown("---")
-    st.subheader("2. Dati Sportivi")
-    odds_key_input = st.text_input("The Odds API Key", placeholder="Inserisci chiave", type="password")
-    
+    st.subheader("2. Stato Connessioni")
+    if GEMINI_API_KEY:
+        st.success("🟢 Gemini API: Configurata")
+    else:
+        st.error("🔴 Gemini API: Mancante nei Secrets")
+        
+    if ODDS_API_KEY:
+        st.success("🟢 The Odds API: Configurata")
+    else:
+        st.warning("🟡 The Odds API: Mancante (Uso dati mock)")
+
     st.markdown("---")
     st.subheader("3. Filtri")
     min_conf = st.slider("Confidenza Minima (%)", min_value=30, max_value=85, value=40)
 
 st.title("📊 Bet-Pro | Advanced Intelligence Hub")
 
-if not odds_key_input:
-    st.error("⚠️ Inserisci la chiave di The Odds API nella barra laterale per sbloccare tutti gli eventi reali e i mercati avanzati.")
-
-with st.spinner("Sincronizzazione mercati (1X2, Under/Over, Handicap)..."):
-    if odds_key_input:
-        df_raw = fetch_real_odds_data(odds_key_input)
+# Sincronizzazione dati
+with st.spinner("Sincronizzazione mercati in corso..."):
+    if ODDS_API_KEY:
+        df_raw = fetch_real_odds_data(ODDS_API_KEY)
         if df_raw.empty:
-            st.warning("Nessun dato trovato con la chiave inserita. Caricati dati di test.")
+            st.warning("Nessun dato trovato o chiave non valida. Caricati dati di test.")
             df_raw = generate_fallback_data()
     else:
         df_raw = generate_fallback_data()
@@ -216,11 +217,11 @@ if not df_filtered.empty:
     st.subheader("🧠 Interrogazione Motore AI")
     
     if st.button(f"🚀 Avvia Analisi Strategica con {selected_model}", type="primary", use_container_width=True):
-        if not gemini_key_input:
-            st.error("Inserisci la chiave API di Gemini.")
+        if not GEMINI_API_KEY:
+            st.error("Chiave API di Gemini mancante nei Secrets.")
         else:
             with st.spinner(f"Elaborazione in corso con {selected_model}..."):
-                ai_report, status = get_gemini_market_intelligence(gemini_key_input, df_filtered, selected_model)
+                ai_report, status = get_gemini_market_intelligence(GEMINI_API_KEY, df_filtered, selected_model)
                 if ai_report:
                     st.success("Analisi completata con successo.")
                     st.markdown(f"> {ai_report}")
@@ -228,4 +229,4 @@ if not df_filtered.empty:
                     st.error(status)
 else:
     st.warning("Nessun match supera i parametri attuali.")
-            
+    
