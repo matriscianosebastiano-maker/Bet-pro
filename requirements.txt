@@ -2,4 +2,4 @@ streamlit
 requests
 pandas
 numpy
-anthropic
+google-generativeai
