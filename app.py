@@ -14,13 +14,13 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Sidebar: Informazioni di sistema (senza maschera manuale)
+# Sidebar: Informazioni di sistema
 with st.sidebar:
     st.title("⚙️ Configurazione")
     st.markdown("---")
     st.success("🔑 Chiave API Integrata Nativamente")
     st.markdown("---")
-    st.info("🧠 Motore AI: Gemini 2.0 Flash")
+    st.info("🧠 Motore AI: Gemini 2.5 Flash")
     st.info("📡 Fonti Dati: ESPN Master Feed, The Odds API")
 
 st.markdown("""
@@ -178,15 +178,15 @@ def calculate_market_intelligence(df):
     return df
 
 
-# --- 4. MODULO INTEGRAZIONE GEMINI (AGGIORNATO A GEMINI 2.0 FLASH) ---
+# --- 4. MODULO INTEGRAZIONE GEMINI (AGGIORNATO A GEMINI 2.5 FLASH) ---
 def get_gemini_market_intelligence(api_key, df_filtered):
     if not api_key or not (api_key.startswith("AIza") or api_key.startswith("AQ")):
         return None, "Chiave API non valida o non configurata nel codice."
     
     try:
         genai.configure(api_key=api_key)
-        # Utilizzo del modello aggiornato gemini-2.0-flash
-        model = genai.GenerativeModel('gemini-2.0-flash')
+        # Aggiornato al modello standard corrente gemini-2.5-flash
+        model = genai.GenerativeModel('gemini-2.5-flash')
         
         df_ai = df_filtered.copy()
         df_ai['Conf_Numeric'] = df_ai['Confidenza (%)'].str.replace('%', '', regex=False).astype(int)
@@ -312,3 +312,4 @@ with tab3:
         col_c.metric(label="Puntata Sicura (50% Kelly)", value=f"€{importo_consigliato_half:.2f}")
             
         st.markdown("*La gestione del rischio ottimale prevede l'utilizzo del **Kelly Frazionato (50%)** per ammortizzare la varianza sfavorevole tipica delle scommesse sportive.*")
+        
