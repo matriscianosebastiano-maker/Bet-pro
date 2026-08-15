@@ -157,4 +157,4 @@ if st.button("🚀 AVVIA ANALISI GLOBALE E COMPILA SCHEDINA", type="primary", us
             st.dataframe(df_analyzed, use_container_width=True)
 
 st.info("ℹ️ Il sistema si aggiorna dinamicamente a ogni nuovo caricamento della pagina.")
-             
+                                       
