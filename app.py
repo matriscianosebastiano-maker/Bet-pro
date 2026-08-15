@@ -4,12 +4,13 @@ import pandas as pd
 import google.generativeai as genai
 
 # --- CONFIGURAZIONE PAGINA ---
-st.set_page_config(page_title="Bet-Pro AI | Palinsesto Multisport Globale", page_icon="🏅", layout="wide")
-st.title("🏅 Bet-Pro AI Engine | Feed Multisport & Analisi Algoritmica")
-st.markdown("Sistema integrato di acquisizione dati da tutti gli sport e campionati globali (ESPN Public Feed) con elaborazione pronostici IA.")
+st.set_page_config(page_title="Bet-Pro AI | Miglior Risultato", page_icon="🎯", layout="wide")
+st.title("🎯 Bet-Pro AI Engine | Selezione Miglior Giocata")
+st.markdown("Analisi automatica del palinsesto multisport ed estrazione del **miglior risultato da giocare** elaborato dall'algoritmo IA.")
 
-# --- GESTIONE CHIAVI API (Con fallback in Sidebar) ---
+# --- GESTIONE CHIAVI API (Sidebar) ---
 st.sidebar.header("⚙️ Configurazione Chiavi")
+st.sidebar.markdown("Se riscontri errori di autenticazione, inserisci una chiave Gemini valida generata da [Google AI Studio](https://aistudio.google.com/).")
 gemini_input_key = st.sidebar.text_input("Inserisci Gemini API Key", type="password")
 
 api_key = None
@@ -21,34 +22,17 @@ else:
     except Exception:
         pass
 
-if not api_key:
-    st.sidebar.warning("⚠️ Inserisci la tua Gemini API Key per attivare l'analisi IA.")
-
 # --- MOTORE DI RECUPERO DATI MULTISPORT DA ESPN ---
 @st.cache_data(ttl=300)
 def fetch_all_sports_schedules():
-    # Elenco completo ed esteso di tutti gli sport e campionati disponibili su ESPN
     endpoints = [
-        # Calcio Europeo e Internazionale
         {"sport": "soccer", "league": "ita.1", "name": "Serie A (Calcio)"},
         {"sport": "soccer", "league": "eng.1", "name": "Premier League (Calcio)"},
         {"sport": "soccer", "league": "esp.1", "name": "La Liga (Calcio)"},
         {"sport": "soccer", "league": "ger.1", "name": "Bundesliga (Calcio)"},
-        {"sport": "soccer", "league": "fra.1", "name": "Ligue 1 (Calcio)"},
         {"sport": "soccer", "league": "uefa.champions", "name": "Champions League (Calcio)"},
-        {"sport": "soccer", "league": "uefa.europa", "name": "Europa League (Calcio)"},
-        
-        # Basket
         {"sport": "basketball", "league": "nba", "name": "NBA (Basket)"},
-        {"sport": "basketball", "league": "mens-college-basketball", "name": "NCAA Basket (USA)"},
-        
-        # Tennis
         {"sport": "tennis", "league": "atp", "name": "Tennis ATP"},
-        {"sport": "tennis", "league": "wta", "name": "Tennis WTA"},
-        
-        # Altri Sport USA / Globali
-        {"sport": "baseball", "league": "mlb", "name": "MLB (Baseball)"},
-        {"sport": "hockey", "league": "nhl", "name": "NHL (Hockey su ghiaccio)"},
         {"sport": "football", "league": "nfl", "name": "NFL (Football Americano)"}
     ]
     
@@ -88,47 +72,53 @@ def fetch_all_sports_schedules():
     return pd.DataFrame(all_matches)
 
 # --- INTERFACCIA PRINCIPALE ---
-if st.button("🚀 Sincronizza Tutti gli Sport & Analisi IA", use_container_width=True, type="primary"):
-    with st.spinner("Scansione in corso di tutti i feed sportivi globali (Calcio, Basket, Tennis, MLB, NHL, NFL)..."):
-        df_events = fetch_all_sports_schedules()
-        
-    if df_events.empty:
-        st.warning("Nessun evento disponibile al momento sui server.")
+if st.button("🚀 Sincronizza & Calcola il Miglior Pronostico da Giocare", use_container_width=True, type="primary"):
+    if not api_key:
+        st.error("⚠️ Inserisci una chiave API di Gemini valida nella barra laterale (Sidebar a sinistra) per procedere con l'analisi.")
     else:
-        st.success(f"✅ Sincronizzazione completata: trovati {len(df_events)} eventi attivi in tutti gli sport.")
-        
-        st.subheader("📋 Dataset Globale Eventi Multisport")
-        st.dataframe(df_events, use_container_width=True, hide_index=True)
-        
-        # Sezione IA per l'analisi e pronostici
-        if not api_key:
-            st.error("⚠️ Impossibile generare i pronostici IA: inserisci la chiave API nella barra laterale (Sidebar).")
+        with st.spinner("Sincronizzazione feed sportivi globali in corso..."):
+            df_events = fetch_all_sports_schedules()
+            
+        if df_events.empty:
+            st.warning("Nessun evento disponibile al momento sui server.")
         else:
-            try:
-                genai.configure(api_key=api_key)
-                ai_model = genai.GenerativeModel('gemini-1.5-flash')
-                
-                with st.spinner("L'intelligenza artificiale sta elaborando i pronostici statistici per tutte le discipline..."):
-                    # Prendiamo un campione rappresentativo se il dataset è molto ampio per evitare limiti di token
-                    sample_data = df_events.head(25).to_string()
+            st.success(f"✅ Sincronizzazione completata: trovati {len(df_events)} eventi attivi.")
+            
+            # Elaborazione IA per estrarre la giocata ottimale
+            with st.spinner("L'intelligenza artificiale sta analizzando le probabilità per selezionare il miglior risultato da giocare..."):
+                try:
+                    genai.configure(api_key=api_key)
+                    ai_model = genai.GenerativeModel('gemini-1.5-flash')
+                    
+                    sample_data = df_events.head(30).to_string()
                     prompt = f"""
-                    Agisci come un Quantitative Sports Analyst esperto di tutti i mercati sportivi (Calcio, Basket, Tennis, US Sports). 
-                    Analizza la seguente lista di eventi sportivi multisport:
+                    Agisci come un Quantitative Sports Trader professionista.
+                    Analizza il seguente palinsesto di eventi sportivi attivi:
                     
                     {sample_data}
                     
-                    Per ogni riga, genera un pronostico strutturato in tabella Markdown comprendente:
-                    1. Sport / Lega
-                    2. Match
-                    3. Esito Matematico Consigliato (es. 1X2, Over/Under, Moneyline, Spread)
-                    4. Indice di Confidenza (Alta, Media, Rischio Calcolato)
-                    5. Motivazione sintetica basata su algoritmi stocastici.
+                    Il tuo compito è elaborare e restituire ESCLUSIVAMENTE la selezione con il valore statistico più alto.
+                    Struttura la risposta in questo modo esatto:
+                    
+                    ### 🏆 TOP BET CONSIGLIATA (Miglior Risultato da Giocare)
+                    - **Match Selezionato:** [Inserisci il match]
+                    - **Sport / Lega:** [Inserisci la lega]
+                    - **Esito Matematico Consigliato:** [Es. 1, X2, Over 2.5, ecc.]
+                    - **Indice di Confidenza:** [Es. Alta / 90%]
+                    - **Analisi e Motivazione Algoritmica:** [Spiegazione tecnica sintetica del perché questo è il miglior evento su cui puntare]
+                    
+                    ### 📋 Altre Occasioni di Valore
+                    (Crea una breve tabella con altri 3 match di spicco e i relativi esiti consigliati).
                     """
                     
                     response = ai_model.generate_content(prompt)
                     if response and hasattr(response, 'text'):
-                        st.markdown("### 🤖 Pronostici & Esiti Algoritmici Multisport dell'IA")
                         st.markdown(response.text)
-            except Exception as e:
-                st.error(f"⚠️ Errore di autenticazione o generazione IA: {e}")
-                
+                except Exception as e:
+                    st.error(f"⚠️ Errore di autenticazione o generazione IA: {e}")
+                    st.info("💡 Suggerimento: Verifica che la chiave API inserita nella barra laterale sia corretta e attiva.")
+            
+            st.divider()
+            st.subheader("📋 Dataset Completo Eventi Sincronizzati")
+            st.dataframe(df_events, use_container_width=True, hide_index=True)
+            
