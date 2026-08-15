@@ -126,7 +126,6 @@ def calculate_market_intelligence(df):
     if df.empty:
         return df
         
-    # Assicura che le colonne delle quote esistano sempre
     for col, default_val in [('Quota_1', 2.10), ('Quota_X', 3.30), ('Quota_2', 3.50)]:
         if col not in df.columns:
             df[col] = default_val
@@ -220,7 +219,6 @@ with st.spinner("Sincronizzazione palinsesto e calcolo stocastico in corso..."):
     df_raw = fetch_master_sports_data(ODDS_API_KEY)
     df_analyzed = calculate_market_intelligence(df_raw)
 
-# Organizzazione in schede professionali (Tabs)
 tab1, tab2, tab3 = st.tabs(["📊 Dashboard & Intelligence", "📋 Master Palinsesto & Export", "💰 Calcolatore Bankroll"])
 
 with tab1:
@@ -240,7 +238,6 @@ with tab1:
     else:
         df_filtered = df_analyzed
 
-    # Metriche rapide di sintesi
     col1, col2, col3 = st.columns(3)
     with col1:
         st.metric(label="Eventi Totali", value=len(df_analyzed))
@@ -255,14 +252,15 @@ with tab1:
         st.success(f"Analisi completata con successo su {len(df_filtered)} eventi.")
         
         if not df_filtered.empty:
-            top_match = df_filtered.sort_values(by="Value_Score", ascending=False).iloc[0]
+            # CORRETTO: "Value Score" con lo spazio anziché Value_Score
+            top_match = df_filtered.sort_values(by="Value Score", ascending=False).iloc[0]
             
             st.markdown(f"""
             <div class="metric-card">
                 <h3>🏆 TOP VALUE BET SELEZIONATA</h3>
                 <p><b>Match:</b> {top_match['Match']} ({top_match['Lega']})</p>
                 <p><b>Esito Consigliato:</b> <b>{top_match['Esito Consigliato']}</b> (Confidenza: {top_match['Confidenza Statistica']})</p>
-                <p><b>Value Index:</b> {top_match['Value_Score']} | <b>Kelly Stake:</b> {top_match['Kelly Stake Consigliato']} del Bankroll</p>
+                <p><b>Value Index:</b> {top_match['Value Score']} | <b>Kelly Stake:</b> {top_match['Kelly Stake Consigliato']} del Bankroll</p>
             </div>
             """, unsafe_allow_html=True)
         
