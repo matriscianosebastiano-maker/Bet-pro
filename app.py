@@ -86,9 +86,9 @@ if st.button("🚀 ELABORA LA MIGLIORE SCHEDINA", type="primary", use_container_
         if not df_processed.empty:
             prompt = f"Analizza questi match e crea la schedina ottimizzata: {df_processed.to_string(index=False)}. Includi esiti combinati, sii sintetico e professionale."
             
-            # Utilizzo del modello ufficiale corretto gemini-2.0-flash
+            # Utilizzo del modello ufficiale aggiornato gemini-3.5-flash
             client = genai.Client(api_key=GEMINI_API_KEY)
-            response = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
+            response = client.models.generate_content(model="gemini-3.5-flash", contents=prompt)
             
             st.subheader("📋 Schedina Ottimizzata:")
             st.markdown(response.text)
@@ -96,3 +96,4 @@ if st.button("🚀 ELABORA LA MIGLIORE SCHEDINA", type="primary", use_container_
             st.error("Nessun dato disponibile.")
 
 st.info("ℹ️ I motori di calcolo operano interamente in background.")
+                
