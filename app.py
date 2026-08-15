@@ -16,7 +16,8 @@ st.set_page_config(
 with st.sidebar:
     st.title("⚙️ Configurazione")
     st.markdown("---")
-    gemini_key = st.text_input("Gemini API Key (AIzaSy...)", type="password", help="Inserisci la tua chiave gratuita di Google AI Studio")
+    # Aggiornato il placeholder e l'help per riflettere i formati AIza o AQ.
+    gemini_key = st.text_input("Gemini API Key (AIza... o AQ...)", type="password", help="Inserisci la tua chiave di Google AI Studio (formati AIza o AQ.)")
     st.markdown("[Ottieni una chiave gratuita qui](https://aistudio.google.com/app/apikey)")
     st.markdown("---")
     st.info("🧠 Motore AI: Gemini 1.5 Flash")
@@ -187,10 +188,11 @@ def calculate_market_intelligence(df):
     return df
 
 
-# --- 4. MODULO INTEGRAZIONE GEMINI ---
+# --- 4. MODULO INTEGRAZIONE GEMINI (AGGIORNATO CON SUPPORTO CHIAVI AIza / AQ.) ---
 def get_gemini_market_intelligence(api_key, df_filtered):
-    if not api_key or not api_key.startswith("AIzaSy"):
-        return None, "Attenzione: Inserisci una chiave Gemini valida (inizia con AIzaSy) nella barra laterale."
+    # Supporta sia le vecchie chiavi (AIza) che le nuove (AQ.)
+    if not api_key or not (api_key.startswith("AIza") or api_key.startswith("AQ")):
+        return None, "Attenzione: Inserisci una chiave Gemini valida (formati AIza... o AQ...) nella barra laterale."
     
     try:
         genai.configure(api_key=api_key)
@@ -198,7 +200,7 @@ def get_gemini_market_intelligence(api_key, df_filtered):
         
         # Prepariamo un estratto pulito per l'AI ordinato per confidenza matematica
         df_ai = df_filtered.copy()
-        df_ai['Conf_Numeric'] = df_ai['Confidenza (%)'].str.replace('%', '').astype(int)
+        df_ai['Conf_Numeric'] = df_ai['Confidenza (%)'].str.replace('%', '', regex=False).astype(int)
         df_ai = df_ai.sort_values(by="Conf_Numeric", ascending=False)
         
         market_summary = df_ai[['Lega', 'Match', 'Quota_1', 'Quota_X', 'Quota_2', 'Esito Più Probabile', 'Confidenza (%)', 'Kelly Stake Consigliato']].head(10).to_string()
@@ -254,7 +256,7 @@ with tab1:
     # Identifica l'esito in assoluto più probabile
     if not df_filtered.empty:
         df_filtered_sorted = df_filtered.copy()
-        df_filtered_sorted['Conf_Numeric'] = df_filtered_sorted['Confidenza (%)'].str.replace('%', '').astype(int)
+        df_filtered_sorted['Conf_Numeric'] = df_filtered_sorted['Confidenza (%)'].str.replace('%', '', regex=False).astype(int)
         top_match = df_filtered_sorted.sort_values(by="Conf_Numeric", ascending=False).iloc[0]
         
         st.markdown(f"""
@@ -322,4 +324,4 @@ with tab3:
         col_c.metric(label="Puntata Sicura (50% Kelly)", value=f"€{importo_consigliato_half:.2f}")
             
         st.markdown("*La gestione del rischio ottimale prevede l'utilizzo del **Kelly Frazionato (50%)** per ammortizzare la varianza sfavorevole tipica delle scommesse sportive.*")
-        
+    
