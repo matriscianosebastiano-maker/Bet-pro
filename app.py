@@ -8,7 +8,6 @@ from datetime import datetime, timezone, timedelta
 
 # --- CONFIGURAZIONE ---
 st.set_page_config(page_title="Bet-Pro | Executive Hub", page_icon="🎯", layout="centered")
-# Assicurati di avere GEMINI_API_KEY e ODDS_API_KEY configurati nei tuoi st.secrets
 GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "")
 ODDS_API_KEY = st.secrets.get("ODDS_API_KEY", "")
 
@@ -23,7 +22,7 @@ def fetch_all_available_odds(api_key):
         sports_data = sports_res.json() if sports_res.status_code == 200 else []
     except: return pd.DataFrame()
     
-    # Priorità: Calcio (soccer) + Altri sport popolari
+    # Priorità: Calcio (soccer) + Altri sport popolari (Tennis, Basket)
     soccer_sports = [s['key'] for s in sports_data if "soccer" in s.get('key', '').lower()]
     other_sports = [s['key'] for s in sports_data if any(x in s.get('key', '').lower() for x in ['basketball', 'tennis']) and s.get('active')]
     
@@ -77,6 +76,8 @@ def compute_background_intelligence(df):
 
 # --- 3. INTERFACCIA E OUTPUT ---
 st.title("🎯 Bet-Pro | Executive Hub")
+st.markdown("Analisi quantitativa avanzata di Calcio e altri sport principali.")
+
 if st.button("🚀 ELABORA LA MIGLIORE SCHEDINA", type="primary", use_container_width=True):
     with st.spinner("Analisi quantitativa in corso..."):
         df_raw = fetch_all_available_odds(ODDS_API_KEY)
@@ -85,12 +86,13 @@ if st.button("🚀 ELABORA LA MIGLIORE SCHEDINA", type="primary", use_container_
         if not df_processed.empty:
             prompt = f"Analizza questi match e crea la schedina ottimizzata: {df_processed.to_string(index=False)}. Includi esiti combinati, sii sintetico e professionale."
             
-            # Modello stabile gemini-1.5-flash
+            # Utilizzo del modello ufficiale corretto gemini-2.0-flash
             client = genai.Client(api_key=GEMINI_API_KEY)
-            response = client.models.generate_content(model="gemini-1.5-flash", contents=prompt)
+            response = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
             
             st.subheader("📋 Schedina Ottimizzata:")
             st.markdown(response.text)
         else:
             st.error("Nessun dato disponibile.")
-            
+
+st.info("ℹ️ I motori di calcolo operano interamente in background.")
