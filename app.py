@@ -121,8 +121,16 @@ def fetch_master_sports_data(api_key_odds):
         
     return pd.DataFrame(matches_list)
 
-# --- 4. MOTORE ANALITICO DI VALORE & KELLY ---
+# --- 4. MOTORE ANALITICO DI VALORE & KELLY (DIFENSIVO) ---
 def calculate_market_intelligence(df):
+    if df.empty:
+        return df
+        
+    # Assicura che le colonne delle quote esistano sempre
+    for col, default_val in [('Quota_1', 2.10), ('Quota_X', 3.30), ('Quota_2', 3.50)]:
+        if col not in df.columns:
+            df[col] = default_val
+
     df['Prob_1_Imp'] = 1 / df['Quota_1']
     df['Prob_X_Imp'] = 1 / df['Quota_X']
     df['Prob_2_Imp'] = 1 / df['Quota_2']
@@ -143,7 +151,6 @@ def calculate_market_intelligence(df):
         best_choice = max(probs, key=probs.get)
         conf_val = int(probs[best_choice] * 100)
         
-        # Calcolo Criterio di Kelly Semplificato (f* = (p * b - q) / b)
         p = probs[best_choice]
         quota = quotes[best_choice]
         q = 1 - p
@@ -276,7 +283,6 @@ with tab2:
     st.subheader("📋 Tabella Dettagliata di Mercato & Esportazione")
     st.markdown("Consulta l'intero palinsesto elaborato dal motore quantitativo o scaricalo in formato CSV.")
     
-    # Pulsante per il download del CSV
     csv_data = df_filtered.to_csv(index=False).encode('utf-8')
     st.download_button(
         label="📥 Scarica Palinsesto Filtrato (CSV)",
@@ -298,7 +304,6 @@ with tab3:
     bankroll_totale = st.number_input("Inserisci il tuo Bankroll Totale (€):", min_value=10.0, value=1000.0, step=50.0)
     
     if not df_filtered.empty:
-        # Seleziona un match dalla lista filtrata per simulare la puntata
         match_options = df_filtered['Match'].tolist()
         selected_match_name = st.selectbox("Seleziona evento per simulazione puntata:", match_options)
         
@@ -306,16 +311,13 @@ with tab3:
         
         st.info(f"**Match Selezionato:** {match_row['Match']} ({match_row['Lega']}) | **Esito:** {match_row['Esito Consigliato']}")
         
-        # Estrai percentuale kelly pulita
         kelly_str = match_row['Kelly Stake Consigliato'].replace('%', '')
         kelly_val = float(kelly_str) if kelly_str else 0.0
         
-        # Calcolo puntata consigliata (Kelly Frazionato al 50% per prudenza professionale)
         importo_consigliato = (bankroll_totale * (kelly_val / 100.0)) * 0.5
         
         col_a, col_b = st.columns(2)
         with col_a:
-        # Simple inline formatting or regular bold markdown without LaTeX
             st.metric(label="Percentuale Kelly Consigliata", value=f"{kelly_val}%")
         with col_b:
             st.metric(label="Puntata Consigliata (€) [Kelly Frazionato 50%]", value=f"€{importo_consigliato:.2f}")
