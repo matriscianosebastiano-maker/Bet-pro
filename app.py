@@ -9,12 +9,13 @@ st.set_page_config(page_title="Bet-Pro | Executive Hub", page_icon="🎯", layou
 GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "")
 ODDS_API_KEY = st.secrets.get("ODDS_API_KEY", "")
 
-# --- 1 & 2. ACQUISIZIONE ROBUSTA CON FALLBACK GLOBALE ---
+# --- 1 & 2. ACQUISIZIONE GLOBALE UNIFICATA (Campionati, Coppe e Trofei) ---
 @st.cache_data(ttl=300)
 def fetch_all_world_soccer_odds(api_key):
     if not api_key:
         return pd.DataFrame()
         
+    # 1. Recuperiamo la lista di tutti gli sport/competizioni disponibili
     sports_url = f"https://api.the-odds-api.com/v4/sports/?apiKey={api_key}"
     try:
         sports_res = requests.get(sports_url, timeout=10)
@@ -23,15 +24,15 @@ def fetch_all_world_soccer_odds(api_key):
     except:
         return pd.DataFrame()
     
-    # Filtriamo tutte le chiavi relative al calcio presenti nell'API
-    all_soccer_keys = [s['key'] for s in sports_data if "soccer" in s.get('key', '').lower()]
+    # Isoliamo qualsiasi chiave di competizione calcistica presente nel palinsesto mondiale
+    soccer_keys = [s['key'] for s in sports_data if "soccer" in s.get('key', '').lower()]
     
     matches_list = []
-    # Scandagliamo fino a 25 tornei disponibili globalmente (campionati, coppe e trofei)
-    for sport_key in all_soccer_keys[:25]:
+    # Scandagliamo le competizioni attive (campionati, coppe nazionali, coppe internazionali e trofei)
+    for sport_key in soccer_keys[:30]:
         url = f"https://api.the-odds-api.com/v4/sports/{sport_key}/odds/?regions=eu&markets=h2h,totals&apiKey={api_key}"
         try:
-            response = requests.get(url, timeout=4)
+            response = requests.get(url, timeout=3)
             if response.status_code != 200: continue
             data = response.json()
             
@@ -78,7 +79,7 @@ def fetch_all_world_soccer_odds(api_key):
         df = df.sort_values(by="Data_Ora").reset_index(drop=True)
     return df
 
-# --- 3, 4 & 5. MODELLO MATEMATICO ---
+# --- 3, 4 & 5. MODELLO MATEMATICO QUANTITATIVO ---
 def apply_quantitative_intelligence(df):
     if df.empty: return df
     processed = []
@@ -112,24 +113,24 @@ st.title("🎯 Bet-Pro | Executive Hub")
 st.markdown("Piattaforma globale di analisi dati per campionati, coppe, trofei e intelligenza predittiva.")
 
 if st.button("🚀 AVVIA ANALISI GLOBALE E COMPILA SCHEDINA", type="primary", use_container_width=True):
-    with st.spinner("Connessione ai server globali e calcolo delle quote in corso..."):
+    with st.spinner("Scandagliando coppe, trofei e campionati mondiali in corso..."):
         df_raw = fetch_all_world_soccer_odds(ODDS_API_KEY)
         
         if df_raw.empty:
-            st.warning("⚠️ Nessun match trovato al momento. Verifica che la chiave API (`ODDS_API_KEY`) sia attiva e valida nei Secret di Streamlit.")
+            st.warning("⚠️ Nessun match o coppa attiva trovata al momento sui server globali.")
         else:
             df_analyzed = apply_quantitative_intelligence(df_raw)
             market_summary = df_analyzed.head(15).to_string(index=False)
             
             prompt = f"""
-            Sei il risk manager e capo analista di Bet-Pro. Ecco i match disponibili (tra coppe, trofei e campionati mondiali), ordinati per data e orario con relative quote:
+            Sei il risk manager e capo analista di Bet-Pro. Ecco i match disponibili tra coppe, trofei e campionati internazionali, ordinati per data e orario con relative quote:
             
             {market_summary}
             
             DIRETTIVE OPERATIVE:
             1. COERENZA CRONOLOGICA: Costruisci una schedina multipla selezionando eventi con date e orari logicamente concatenabili.
-            2. FOCUS SU COPPE E TROFEI: Valuta attentamente l'impatto e la tensione agonistica delle coppe o dei trofei internazionali presenti.
-            3. COMBO E MERCATI ALTERNATIVI OBBLIGATORI: Non limitarti al segno secco 1X2 se rischioso. Per ogni match della schedina compila una COMBO o un esito alternativo professionale (es. 1X + Under 3.5, X2 + Over 1.5, Goal + Over 2.5, Under 2.5).
+            2. FOCUS SU COPPE E TROFEI: Dai la giusta importanza ai turni di coppa o trofei, valutando la tensione agonistica e i potenziali rischi di match bloccati.
+            3. COMBO E MERCATI ALTERNATIVI OBBLIGATORI: Vietato limitarsi al segno secco 1X2 se rischioso. Per ogni match della schedina compila una COMBO o un esito alternativo professionale (es. 1X + Under 3.5, X2 + Over 1.5, Goal + Over 2.5, Under 2.5).
             4. RESTITUZIONE: Fornisci l'output pulito in Markdown indicando: Competizione, Partita, Data/Ora, Esito Consigliato (con Combo o opzione laterale), Quota stimata, Motivazione sintetica e Quota Totale della schedina.
             """
             
@@ -149,10 +150,11 @@ if st.button("🚀 AVVIA ANALISI GLOBALE E COMPILA SCHEDINA", type="primary", us
                 st.subheader("📋 Schedina Consigliata (Coppe, Trofei e Campionati)")
                 st.markdown(ai_output)
             else:
-                st.warning("⚠️ L'analisi IA ha impiegato troppo tempo. Clicca di nuovo sul pulsante per generare la schedina.")
+                st.warning("⚠️ L'analisi IA ha richiesto troppo tempo. Riprova subito premendo il tasto.")
                 
             st.divider()
             st.subheader("📊 Tabella Analitica Completa")
             st.dataframe(df_analyzed, use_container_width=True)
 
 st.info("ℹ️ Il sistema si aggiorna dinamicamente a ogni nuovo caricamento della pagina.")
+        
