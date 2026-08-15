@@ -11,7 +11,7 @@ st.set_page_config(page_title="Bet-Pro | Executive Hub", page_icon="🎯", layou
 GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "")
 ODDS_API_KEY = st.secrets.get("ODDS_API_KEY", "")
 
-# --- 1. MOTORE DI ACQUISIZIONE MULTI-SPORT (Tutti gli sport) ---
+# --- 1. MOTORE DI ACQUISIZIONE BILANCIATO (Calcio prioritario + Altri Sport) ---
 @st.cache_data(ttl=300)
 def fetch_all_available_odds(api_key):
     if not api_key:
@@ -26,10 +26,15 @@ def fetch_all_available_odds(api_key):
     except:
         return pd.DataFrame()
     
-    all_sports = [s['key'] for s in sports_data if s.get('active')]
+    # Selezioniamo prima tutto il calcio, poi aggiungiamo qualche sport popolare (Tennis, Basket)
+    soccer_sports = [s['key'] for s in sports_data if "soccer" in s.get('key', '').lower()]
+    other_sports = [s['key'] for s in sports_data if any(x in s.get('key', '').lower() for x in ['basketball', 'tennis']) and s.get('active')]
+    
+    # Uniamo dando priorità al calcio (primi 10) e aggiungendo max 3 sport extra
+    selected_sports = soccer_sports[:10] + other_sports[:3]
     
     matches_list = []
-    for sport_key in all_sports[:15]: 
+    for sport_key in selected_sports: 
         url = f"https://api.the-odds-api.com/v4/sports/{sport_key}/odds/?regions=eu&markets=h2h&apiKey={api_key}"
         try:
             response = requests.get(url, timeout=3)
@@ -51,7 +56,7 @@ def fetch_all_available_odds(api_key):
                 
                 q1 = odds.get(home, 0.0)
                 q2 = odds.get(away, 0.0)
-                qx = odds.get("Draw", 1.0) # 1.0 se lo sport non prevede il pareggio
+                qx = odds.get("Draw", 1.0)
                 
                 if q1 > 0 and q2 > 0:
                     matches_list.append({
@@ -70,11 +75,12 @@ def fetch_all_available_odds(api_key):
 def get_fallback_matches():
     return pd.DataFrame([
         {"Lega": "Serie A", "Match": "Inter vs Monza", "Quota_1": 1.35, "Quota_X": 5.25, "Quota_2": 9.00, "Ha_Pareggio": True},
+        {"Lega": "Premier League", "Match": "Manchester United vs Fulham", "Quota_1": 1.55, "Quota_X": 4.20, "Quota_2": 5.80, "Ha_Pareggio": True},
         {"Lega": "Tennis (ATP)", "Match": "Sinner vs Alcaraz", "Quota_1": 1.75, "Quota_X": 1.0, "Quota_2": 2.10, "Ha_Pareggio": False},
         {"Lega": "NBA", "Match": "Lakers vs Celtics", "Quota_1": 1.90, "Quota_X": 1.0, "Quota_2": 1.90, "Ha_Pareggio": False}
     ])
 
-# --- 2. MODELLO MATEMATICO DI BACKGROUND (Unificato per qualsiasi sport) ---
+# --- 2. MODELLO MATEMATICO DI BACKGROUND ---
 def compute_background_intelligence(df):
     if df.empty: return df
     
@@ -102,7 +108,6 @@ def compute_background_intelligence(df):
             esito = best_option[0]
             conf = min(92, max(45, best_option[1]))
         else:
-            # Sport senza pareggio (Tennis, Basket, ecc.)
             p1, p2 = 1/q1, 1/q2
             tot_p = p1 + p2
             np1, np2 = p1/tot_p, p2/tot_p
@@ -125,11 +130,11 @@ def compute_background_intelligence(df):
     return pd.DataFrame(analyzed)
 
 # --- 3. INTERFACCIA UTENTE ESECUTIVA ---
-st.title("🎯 Bet-Pro | Generatore Schedine Multi-Sport")
-st.markdown("Scansione globale di tutti gli sport (Calcio, Tennis, Basket, ecc.) e calcoli in background.")
+st.title("🎯 Bet-Pro | Generatore Schedine")
+st.markdown("Analisi quantitativa avanzata di Calcio e altri sport principali.")
 
 if st.button("🚀 ELABORA LA MIGLIORE SCHEDINA DI OGGI", type="primary", use_container_width=True):
-    with st.spinner("Scansione di tutti gli sport mondiali ed elaborazione in corso..."):
+    with st.spinner("Analisi dei mercati e calcoli in corso..."):
         if ODDS_API_KEY:
             df_raw = fetch_all_available_odds(ODDS_API_KEY)
             if df_raw.empty:
@@ -144,19 +149,20 @@ if st.button("🚀 ELABORA LA MIGLIORE SCHEDINA DI OGGI", type="primary", use_co
             summary_str = top_picks.to_string(index=False)
             
             prompt = f"""
-            Sei un algoritmo esperto di betting quantitativo. Ecco i match analizzati in background (inclusi vari sport come Calcio, Tennis, Basket):
+            Sei un algoritmo esperto di betting quantitativo. Ecco i match analizzati in background (principalmente Calcio, con aggiunta di altri sport):
             
             {summary_str}
             
-            Genera la schedina finale multi-sport ottimizzata per oggi e domani. 
+            Genera la schedina finale ottimizzata per oggi e domani. 
             Regole tassative:
-            1. Varia i pronostici e sfrutta anche gli altri sport se presenti (es. Tennis, Basket).
-            2. Fornisci direttamente la schedina pronta con quota stimata e motivazione tecnica ultrashort.
-            3. Niente tabelle o formule, solo il pronostico operativo pulito in Markdown.
+            1. Dai priorità al calcio ma sfrutta anche le migliori opportunità degli altri sport se presenti nella lista.
+            2. Varia i pronostici (segni secchi, doppie chance o esiti appropriati).
+            3. Fornisci direttamente la schedina pronta con quota stimata e motivazione tecnica ultrashort in Markdown.
             """
             
+            # Modello Gemini corretto e stabile
             client = genai.Client(api_key=GEMINI_API_KEY)
-            response = client.models.generate_content(model="gemini-3.6-flash", contents=prompt)
+            response = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
             
             if response and response.text:
                 st.subheader("📋 La tua Schedina Ottimizzata:")
@@ -166,5 +172,5 @@ if st.button("🚀 ELABORA LA MIGLIORE SCHEDINA DI OGGI", type="primary", use_co
         else:
             st.error("Nessun match disponibile al momento.")
 
-st.info("ℹ️ I motori di calcolo e la scansione multi-sport operano interamente in background.")
-                
+st.info("ℹ️ I motori di calcolo operano interamente in background.")
+            
