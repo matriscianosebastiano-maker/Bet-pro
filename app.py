@@ -149,7 +149,6 @@ if st.button("🚀 Sincronizza Master Data & Calcola il Miglior Pronostico", use
         
         # --- 6. CHIAMATA ALLE API DI GEMINI CON VALIDAZIONE ---
         if gemini_key:
-            # Controllo formale sulla validità della chiave Google AI Studio
             if not gemini_key.startswith("AIzaSy"):
                 st.sidebar.error("⚠️ La chiave Gemini inserita non sembra valida (le chiavi Google iniziano con 'AIzaSy').")
             else:
@@ -183,7 +182,7 @@ if st.button("🚀 Sincronizza Master Data & Calcola il Miglior Pronostico", use
                         ai_success = True
                 except Exception as e:
                     ai_success = False
-                    st.sidebar.error(fDettaglio Errore API Gemini: {e})
+                    st.sidebar.error(f"Dettaglio Errore API Gemini: {e}")
         
         # --- 7. GESTIONE RISULTATI & FALLBACK ---
         if ai_success:
@@ -213,4 +212,4 @@ if st.button("🚀 Sincronizza Master Data & Calcola il Miglior Pronostico", use
         st.divider()
         st.subheader("📋 Dataset Unificato Master (The Odds API + ESPN)")
         st.dataframe(df_events, use_container_width=True, hide_index=True)
-             
+        
