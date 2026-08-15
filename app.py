@@ -4,7 +4,9 @@ import pandas as pd
 import numpy as np
 import google.generativeai as genai
 
-# --- 1. SETUP INTERFACCIA GRAFICA ---
+# --- 1. CONFIGURAZIONE CHIAVE API E INTERFACCIA ---
+GEMINI_API_KEY = "AQ.Ab8RN6JgwZVuzMONM_Zmn_IlwL-PqY9-Sdu3Bxw8jxDNeAfBwg"
+
 st.set_page_config(
     page_title="Bet-Pro | Quantitative & AI Intelligence",
     page_icon="🎯",
@@ -12,15 +14,13 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Sidebar: Configurazione "Micro-Maschera"
+# Sidebar: Informazioni di sistema (senza maschera manuale)
 with st.sidebar:
     st.title("⚙️ Configurazione")
     st.markdown("---")
-    # Aggiornato il placeholder e l'help per riflettere i formati AIza o AQ.
-    gemini_key = st.text_input("Gemini API Key (AIza... o AQ...)", type="password", help="Inserisci la tua chiave di Google AI Studio (formati AIza o AQ.)")
-    st.markdown("[Ottieni una chiave gratuita qui](https://aistudio.google.com/app/apikey)")
+    st.success("🔑 Chiave API Integrata Nativamente")
     st.markdown("---")
-    st.info("🧠 Motore AI: Gemini 1.5 Flash")
+    st.info("🧠 Motore AI: Gemini 2.0 Flash")
     st.info("📡 Fonti Dati: ESPN Master Feed, The Odds API")
 
 st.markdown("""
@@ -47,7 +47,6 @@ st.markdown('<p class="sub-title">Piattaforma quantitativa: calcolo stocastico d
 def fetch_master_sports_data(api_key_odds=""):
     matches_list = []
     
-    # 2A. Prova a recuperare quote da The Odds API (se c'è la chiave, altrimenti salta)
     if api_key_odds:
         try:
             sports_url = f"https://api.the-odds-api.com/v4/sports?apiKey={api_key_odds}"
@@ -64,7 +63,7 @@ def fetch_master_sports_data(api_key_odds=""):
                             league = ev.get('sport_title', sport_key)
                             date = ev.get('commence_time', 'N/A')[:10]
                             
-                            q1, qx, q2 = 2.10, 3.30, 3.40 # Default
+                            q1, qx, q2 = 2.10, 3.30, 3.40
                             bookmakers = ev.get('bookmakers', [])
                             if bookmakers:
                                 markets_list = bookmakers[0].get('markets', [])
@@ -84,7 +83,6 @@ def fetch_master_sports_data(api_key_odds=""):
         except Exception:
             pass
 
-    # 2B. Recupero Palinsesto Reale da ESPN (Calcio e Basket)
     endpoints = [
         {"sport": "soccer", "league": "ita.1", "name": "Serie A (Calcio)"},
         {"sport": "soccer", "league": "eng.1", "name": "Premier League (Calcio)"},
@@ -113,9 +111,7 @@ def fetch_master_sports_data(api_key_odds=""):
                             
                     match_str = f"{home_team} vs {away_team}" if home_team != "Home" else match_name
                     
-                    # Evita duplicati se lo stesso match è già stato preso da The Odds API
                     if not any(m['Match'] == match_str for m in matches_list):
-                        # Generazione quote simulate realistiche se non abbiamo la chiave The Odds
                         import random
                         q1_sim = round(random.uniform(1.40, 3.50), 2)
                         q2_sim = round(random.uniform(1.80, 4.50), 2)
@@ -129,7 +125,6 @@ def fetch_master_sports_data(api_key_odds=""):
         except Exception:
             continue
             
-    # 2C. Fallback in caso di assenza totale di connessione
     if not matches_list:
         matches_list = [
             {"Lega": "Serie A (Calcio)", "Match": "Juventus vs Inter", "Data": "2026-08-18", "Quota_1": 2.10, "Quota_X": 3.20, "Quota_2": 3.60, "Fonte": "Fallback"},
@@ -144,12 +139,10 @@ def calculate_market_intelligence(df):
     if df.empty:
         return df
 
-    # Calcolo delle probabilità implicite dalle quote
     df['Prob_1_Imp'] = 1 / df['Quota_1']
     df['Prob_X_Imp'] = 1 / df['Quota_X']
     df['Prob_2_Imp'] = 1 / df['Quota_2']
     
-    # Depurazione dell'aggio del bookmaker (Normalizzazione)
     total_prob = df['Prob_1_Imp'] + df['Prob_X_Imp'] + df['Prob_2_Imp']
     df['Prob_1_Norm'] = df['Prob_1_Imp'] / total_prob
     df['Prob_X_Norm'] = df['Prob_X_Imp'] / total_prob
@@ -160,20 +153,18 @@ def calculate_market_intelligence(df):
     kelly_stakes = []
     
     for _, row in df.iterrows():
-        # Trova l'esito matematicamente più probabile
         probs = {'1 (Casa)': row['Prob_1_Norm'], 'X (Pareggio)': row['Prob_X_Norm'], '2 (Ospite)': row['Prob_2_Norm']}
         quotes = {'1 (Casa)': row['Quota_1'], 'X (Pareggio)': row['Quota_X'], '2 (Ospite)': row['Quota_2']}
         
-        best_choice = max(probs, key=probs.get) # Prende l'esito con la probabilità più alta
-        conf_val = int(probs[best_choice] * 100) # Percentuale di confidenza
+        best_choice = max(probs, key=probs.get)
+        conf_val = int(probs[best_choice] * 100)
         
-        # Calcolo Criterio di Kelly: f* = (bp - q) / b
         p = probs[best_choice]
         quota = quotes[best_choice]
         q = 1 - p
         b = quota - 1
         kelly = ((p * b - q) / b) * 100 if b > 0 else 0
-        kelly_pct = max(0.0, round(kelly, 2)) # Mai negativo
+        kelly_pct = max(0.0, round(kelly, 2))
         
         best_outcomes.append(best_choice)
         scores.append(conf_val)
@@ -181,24 +172,22 @@ def calculate_market_intelligence(df):
         
     df['Esito Più Probabile'] = best_outcomes
     df['Confidenza (%)'] = [f"{s}%" for s in scores]
-    # Value Score: premia quote alte con buona confidenza
     df['Value Score'] = ((df['Prob_1_Norm'] * df['Quota_1']) * 50).round(1)
     df['Kelly Stake Consigliato'] = kelly_stakes
     
     return df
 
 
-# --- 4. MODULO INTEGRAZIONE GEMINI (AGGIORNATO CON SUPPORTO CHIAVI AIza / AQ.) ---
+# --- 4. MODULO INTEGRAZIONE GEMINI (AGGIORNATO A GEMINI 2.0 FLASH) ---
 def get_gemini_market_intelligence(api_key, df_filtered):
-    # Supporta sia le vecchie chiavi (AIza) che le nuove (AQ.)
     if not api_key or not (api_key.startswith("AIza") or api_key.startswith("AQ")):
-        return None, "Attenzione: Inserisci una chiave Gemini valida (formati AIza... o AQ...) nella barra laterale."
+        return None, "Chiave API non valida o non configurata nel codice."
     
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        # Utilizzo del modello aggiornato gemini-2.0-flash
+        model = genai.GenerativeModel('gemini-2.0-flash')
         
-        # Prepariamo un estratto pulito per l'AI ordinato per confidenza matematica
         df_ai = df_filtered.copy()
         df_ai['Conf_Numeric'] = df_ai['Confidenza (%)'].str.replace('%', '', regex=False).astype(int)
         df_ai = df_ai.sort_values(by="Conf_Numeric", ascending=False)
@@ -226,7 +215,7 @@ def get_gemini_market_intelligence(api_key, df_filtered):
 
 # --- 5. ESECUZIONE E INTERFACCIA ---
 with st.spinner("Sincronizzazione dati da ESPN e calcolo delle probabilità reali..."):
-    df_raw = fetch_master_sports_data("") # Lasciato vuoto per far intervenire principalmente ESPN
+    df_raw = fetch_master_sports_data("")
     df_analyzed = calculate_market_intelligence(df_raw)
 
 tab1, tab2, tab3 = st.tabs(["📊 Dashboard & Report AI", "📋 Master Palinsesto", "💰 Calcolatore Bankroll"])
@@ -253,7 +242,6 @@ with tab1:
 
     st.divider()
 
-    # Identifica l'esito in assoluto più probabile
     if not df_filtered.empty:
         df_filtered_sorted = df_filtered.copy()
         df_filtered_sorted['Conf_Numeric'] = df_filtered_sorted['Confidenza (%)'].str.replace('%', '', regex=False).astype(int)
@@ -272,7 +260,7 @@ with tab1:
     
     if st.button("🚀 Interpella Gemini per Analisi Strategica", use_container_width=True, type="primary"):
         with st.spinner("Gemini sta analizzando i dati quantitativi..."):
-            ai_output, status_msg = get_gemini_market_intelligence(gemini_key, df_filtered)
+            ai_output, status_msg = get_gemini_market_intelligence(GEMINI_API_KEY, df_filtered)
             if ai_output:
                 st.success("Analisi Neurale completata.")
                 st.markdown("### 🤖 Report Strategico Quantitativo")
@@ -316,7 +304,7 @@ with tab3:
         kelly_val = float(kelly_str) if kelly_str else 0.0
         
         importo_consigliato_full = bankroll_totale * (kelly_val / 100.0)
-        importo_consigliato_half = importo_consigliato_full * 0.5 # Kelly Frazionato
+        importo_consigliato_half = importo_consigliato_full * 0.5
         
         col_a, col_b, col_c = st.columns(3)
         col_a.metric(label="Kelly Teorico", value=f"{kelly_val}%")
@@ -324,4 +312,3 @@ with tab3:
         col_c.metric(label="Puntata Sicura (50% Kelly)", value=f"€{importo_consigliato_half:.2f}")
             
         st.markdown("*La gestione del rischio ottimale prevede l'utilizzo del **Kelly Frazionato (50%)** per ammortizzare la varianza sfavorevole tipica delle scommesse sportive.*")
-    
