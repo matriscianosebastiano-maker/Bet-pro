@@ -1,5 +1,4 @@
 streamlit
 groq
 requests
-pandas
-google-genai
+beautifulsoup4
