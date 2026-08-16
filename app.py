@@ -26,7 +26,6 @@ def scrape_onefootball():
         
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # Tentativo di estrazione dal JSON interno di Next.js (__NEXT_DATA__)
         script_tag = soup.find('script', id='__NEXT_DATA__')
         extracted_text = []
         
@@ -51,7 +50,6 @@ def scrape_onefootball():
             except Exception:
                 pass
         
-        # Fallback sui tag HTML visibili se il JSON non è accessibile direttamente
         if not extracted_text:
             for tag in soup.find_all(['span', 'div', 'a'], class_=lambda x: x and ('match' in x.lower() or 'team' in x.lower() or 'title' in x.lower())):
                 txt = tag.get_text(strip=True)
@@ -68,7 +66,7 @@ def scrape_onefootball():
 
 
 def run_ai_analysis(match_data: str, api_key: str) -> str:
-    """Elabora l'analisi quantitativa tramite l'IA di Groq."""
+    """Elabora l'analisi quantitativa tramite l'IA di Groq con pronostici concreti."""
     if not api_key:
         return "❌ Errore: GROQ_API_KEY non presente nei Secrets di Streamlit."
 
@@ -77,8 +75,8 @@ def run_ai_analysis(match_data: str, api_key: str) -> str:
         
         system_prompt = (
             "Sei un analista quantitativo e bookmaker professionista, specializzato in scommesse sportive. "
-            "Hai una conoscenza enciclopedica del calcio mondiale, dei regolamenti dei tornei "
-            "(distinguendo rigorosamente tra Coppe a eliminazione diretta e campionati) e delle dinamiche di palinsesto."
+            "REGINA ASSOLUTA DEI PRONOSTICI: non devi MAI usare etichette o categorie vuote (come 'Esito 1X2' o 'Under/Over'). "
+            "Devi indicare SEMPRE il pronostico concreto e specifico (es. Segno 1, Segno X, Segno 2, Gol, NoGol, Under 2.5, Over 2.5, ecc.)."
         )
         
         user_prompt = f"""Ecco i dati grezzi estratti in tempo reale da OneFootball (https://onefootball.com/it/partite):
@@ -87,18 +85,18 @@ def run_ai_analysis(match_data: str, api_key: str) -> str:
 -----------------
 
 Istruzioni tassative:
-1. Analizza i dati sopra per identificare le partite di calcio reali in programma oggi, dividendole correttamente per competizione (coppe o campionati).
-2. Per OGNI partita identificata, genera una scheda tecnica strutturata rigorosamente in Markdown con questo formato esatto:
+1. Analizza i dati sopra per identificare le partite reali in programma oggi, rispettando la natura della competizione (Campionato vs Coppa).
+2. Per OGNI partita identificata, genera una scheda tecnica strutturata rigorosamente in Markdown con questo formato esatto (VIETATO scrivere il nome del mercato generico):
 
-### [Squadra Casa] vs [Squadra Ospite] ([Competizione])
-* **Contesto Tattico & Formula:** (Analisi di forma e specificando se è gara secca, andata/ritorno o campionato)
-* **Classi di Esito:**
-  * **Conservativa (Basso Rischio):** [Es. Passaggio Turno / 1X / Doppia Chance]
-  * **Principale (Medio Rischio):** [Es. Esito 1X2 / Gol-NoGol / Under-Over 2.5]
-  * **Speculativa (Alto Rischio):** [Es. Combo / Multigol preciso]
+### [Squadra Casa] vs [Squadra Ospite] ([Competizione esatta])
+* **Contesto Tattico & Formula:** (Analisi di forma e specificando se è campionato o coppa a eliminazione diretta).
+* **Classi di Esito (Inserisci pronostici concreti, MAI categorie vuote):**
+  * **Conservativa (Basso Rischio):** [Es. 1X / X2 / DNB Casa / Under 3.5]
+  * **Principale (Medio Rischio):** [Es. Segno 1 / Segno 2 / Gol / Over 2.5]
+  * **Speculativa (Alto Rischio):** [Es. Combo Segno 1 + Over 1.5 / Multigol 2-4]
 * **Cluster Risultati Esatti Coerenti:** [3 risultati esatti maggiormente probabilistici]
 
-Mantieni un tono rigoroso, professionale e privo di invenzioni."""
+Mantieni un tono rigoroso, professionale e privo di etichette vuote."""
 
         response = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
@@ -139,4 +137,4 @@ if st.session_state["analysis_result"]:
     st.markdown("---")
     st.subheader("📋 Risultati dell'Analisi Quantitativa")
     st.markdown(st.session_state["analysis_result"])
-    
+                                     
