@@ -7,9 +7,9 @@ st.set_page_config(page_title="Bet-Pro | Assistente IA 100%", page_icon="📊", 
 GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "")
 
 def run_ai_bet_analysis(user_query: str, api_key: str) -> str:
-    """Utilizza Gemini con Google Search Grounding per analizzare i match e ricavare esiti probabilistici."""
+    """Utilizza Gemini con Google Search per analizzare i match e ricavare esiti probabilistici."""
     if not api_key:
-        return "⚠️ Errore: `GEMINI_API_KEY` non presente nei Secrets di Streamlit."
+        return "Errore: GEMINI_API_KEY non presente nei Secrets di Streamlit."
 
     try:
         client = genai.Client(api_key=api_key.strip())
@@ -19,25 +19,23 @@ Richiesta/Palinsesto utente:
 "{user_query}"
 
 Istruzioni:
-1. Recupera le informazioni live/aggiornate sui match indicati (orari, stato di forma, competizioni).
+1. Recupera le informazioni live e aggiornate sui match indicati (orari, stato di forma, competizioni).
 2. Per OGNI partita individuata, fornisci l'analisi strutturata in Markdown:
 
-### ⚽ [Squadra Casa] vs [Squadra Ospite] ([Competizione])
+### [Squadra Casa] vs [Squadra Ospite] ([Competizione])
 * **Contesto Tattico:** (Breve quadro statistico e di forma)
 * **Classi di Esito:**
-  * 🟢 **Conservativa (Basso Rischio):** [Es. 1X / Doppia Chance / DNB]
-  * 🟡 **Principale (Medio Rischio):** [Es. Esito 1X2 / Gol-NoGol / Under/Over 2.5]
-  * 🔴 **Speculativa (Alto Rischio):** [Es. Combo / Multigol preciso]
+  * **Conservativa (Basso Rischio):** [Es. 1X / Doppia Chance / DNB]
+  * **Principale (Medio Rischio):** [Es. Esito 1X2 / Gol-NoGol / Under-Over 2.5]
+  * **Speculativa (Alto Rischio):** [Es. Combo / Multigol preciso]
 * **Cluster Risultati Esatti Coerenti:** [3 risultati esatti maggiormente probabilistici]
 
 Mantieni un tono analitico, diretto e privo di fronzoli."""
 
-        # Abilita la ricerca Google integrata per attingere ai dati di oggi in tempo reale
         config = types.GenerateContentConfig(
             tools=[{"google_search": {}}]
         )
 
-        # Tentativo primario su gemini-2.5-flash / gemini-2.0-flash
         for model_id in ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]:
             try:
                 response = client.models.generate_content(
@@ -61,23 +59,21 @@ Mantieni un tono analitico, diretto e privo di fronzoli."""
 st.title("📊 Bet-Pro | Analista Scommesse IA")
 st.caption("Sistema 100% IA autonomo. Nessun limite da API esterne, copertura globale su qualsiasi partita e coppa.")
 
-st.subheader("💡 Cosa vuoi analizzare oggi?")
+st.subheader("Cosa vuoi analizzare oggi?")
 
-# Esempi rapidi
 col_a, col_b, col_c = st.columns(3)
 quick_input = None
 
 with col_a:
-    if st.button("🏆 Coppa Italia Oggi", use_container_width=True):
+    if st.button("Coppa Italia Oggi", use_container_width=True):
         quick_input = "Analizza tutte le partite di Coppa Italia in programma oggi con relativi esiti e risultati esatti."
 with col_b:
-    if st.button("🏴󠁧󠁢󠁥󠁮󠁧󠁿 Community Shield", use_container_width=True):
+    if st.button("Community Shield", use_container_width=True):
         quick_input = "Analizza la partita di oggi Arsenal vs Manchester City fornendo le classi di esito e i risultati esatti."
 with col_c:
-    if st.button("🌍 Mix Palinsesto", use_container_width=True):
+    if st.button("Mix Palinsesto", use_container_width=True):
         quick_input = "Analizza le principali partite di oggi in Europa (Coppa Italia, Ligue 1, Eredivisie, Primeira Liga)."
 
-# Area di testo per input personalizzato o incolla schedina
 user_input = st.text_area(
     "Oppure scrivi le partite / incolla il tuo palinsesto qui sotto:",
     value=quick_input if quick_input else "",
@@ -85,11 +81,11 @@ user_input = st.text_area(
     height=120
 )
 
-if st.button("🚀 Elabora Esiti con l'IA", type="primary", use_container_width=True):
+if st.button("Elabora Esiti con l'IA", type="primary", use_container_width=True):
     if not user_input.strip():
         st.warning("Inserisci prima un testo o seleziona una delle opzioni rapide sopra.")
     elif not GEMINI_API_KEY:
-        st.error("Assicurati di aver configurato `GEMINI_API_KEY` nei Secrets di Streamlit.")
+        st.error("Assicurati di aver configurato GEMINI_API_KEY nei Secrets di Streamlit.")
     else:
         with st.spinner("L'IA sta cercando i dati aggiornati ed elaborando i pronostici..."):
             result = run_ai_bet_analysis(user_input, GEMINI_API_KEY)
