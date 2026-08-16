@@ -1,29 +1,31 @@
 import streamlit as st
-from google import genai
+from openai import OpenAI
 
 st.set_page_config(page_title="Bet-Pro | Assistente IA 100%", page_icon="📊", layout="centered")
 
-GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "")
+OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", "")
 
 if "prompt_text" not in st.session_state:
     st.session_state["prompt_text"] = ""
 
 
 def run_ai_bet_analysis(user_query: str, api_key: str) -> str:
-    """Utilizza il client nativo google-genai con i nomi di modello ufficiali."""
+    """Utilizza l'API di OpenAI per elaborare l'analisi quantitativa dei match."""
     if not api_key:
-        return "❌ Errore: GEMINI_API_KEY non presente nei Secrets di Streamlit."
+        return "❌ Errore: OPENAI_API_KEY non presente nei Secrets di Streamlit."
 
     try:
-        client = genai.Client(api_key=api_key.strip())
-        
-        prompt = f"""Sei un analista quantitativo e statistico specializzato in scommesse sportive.
-Richiesta/Palinsesto utente:
+        client = OpenAI(api_key=api_key.strip())
+
+        system_prompt = """Sei un analista quantitativo e statistico specializzato in scommesse sportive.
+Il tuo compito è analizzare i match forniti ed elaborare pronostici probabilistici strutturati."""
+
+        user_prompt = f"""Richiesta/Palinsesto utente:
 "{user_query}"
 
 Istruzioni:
-1. Analizza i match indicati ed elabora i pronostici probabilistici.
-2. Per OGNI partita individuata, fornisci l'analisi strutturata in Markdown:
+1. Analizza le partite e fornisci per ognuna una scheda tecnica in formato Markdown.
+2. Usa esattamente la seguente struttura per ogni partita:
 
 ### [Squadra Casa] vs [Squadra Ospite] ([Competizione])
 * **Contesto Tattico:** (Breve quadro statistico e di forma)
@@ -35,28 +37,25 @@ Istruzioni:
 
 Mantieni un tono analitico, diretto e privo di fronzoli."""
 
-        # Utilizziamo i nomi di modello stabili per l'SDK
-        for model_id in ["gemini-2.0-flash", "gemini-1.5-flash"]:
-            try:
-                response = client.models.generate_content(
-                    model=model_id,
-                    contents=prompt
-                )
-                if response and response.text:
-                    return response.text
-            except Exception:
-                continue
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.3
+        )
 
-        return "❌ Nessun modello ha risposto. Verifica la validità della chiave nei Secrets."
+        return response.choices[0].message.content
 
     except Exception as e:
-        return f"❌ Errore di chiamata API: {e}"
+        return f"❌ Errore durante la chiamata a OpenAI: {e}"
 
 
 # ---------------- INTERFACCIA STREAMLIT ----------------
 
 st.title("📊 Bet-Pro | Analista Scommesse IA")
-st.caption("Sistema 100% IA autonomo. Nessun limite da API esterne, copertura globale su qualsiasi partita e coppa.")
+st.caption("Sistema 100% IA autonomo alimentato da OpenAI GPT-4o-mini.")
 
 st.subheader("Cosa vuoi analizzare oggi?")
 
@@ -87,9 +86,10 @@ user_input = st.text_area(
 if st.button("Elabora Esiti con l'IA", type="primary", use_container_width=True):
     if not user_input.strip():
         st.warning("Inserisci prima un testo o seleziona una delle opzioni rapide sopra.")
-    elif not GEMINI_API_KEY:
-        st.error("Assicurati di aver configurato GEMINI_API_KEY nei Secrets di Streamlit.")
+    elif not OPENAI_API_KEY:
+        st.error("Assicurati di aver configurato OPENAI_API_KEY nei Secrets di Streamlit.")
     else:
         with st.spinner("L'IA sta elaborando l'analisi quantitativa dei match..."):
-            result = run_ai_bet_analysis(user_input, GEMINI_API_KEY)
+            result = run_ai_bet_analysis(user_input, OPENAI_API_KEY)
             st.markdown(result)
+            
