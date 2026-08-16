@@ -13,7 +13,7 @@ if "analysis_result" not in st.session_state:
 
 
 def scrape_onefootball():
-    """Esegue il fetch live della pagina delle partite di OneFootball ed estrae i match."""
+    """Esegue il fetch live e filtra escludendo le partite già terminate."""
     url = "https://onefootball.com/it/partite"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
@@ -35,9 +35,15 @@ def scrape_onefootball():
                 def extract_matches(obj):
                     if isinstance(obj, dict):
                         if 'homeTeam' in obj and 'awayTeam' in obj:
+                            # Controlla lo stato della partita per scartare quelle finite
+                            status = str(obj.get('matchStatus', obj.get('status', obj.get('matchState', '')))).lower()
+                            if any(term in status for term in ['finished', 'ft', 'ended', 'conclusa', 'terminata', 'full-time', 'closed']):
+                                return # Salta la partita se è già finita
+                            
                             home = obj['homeTeam'].get('name', '') if isinstance(obj['homeTeam'], dict) else str(obj['homeTeam'])
                             away = obj['awayTeam'].get('name', '') if isinstance(obj['awayTeam'], dict) else str(obj['awayTeam'])
                             comp = obj.get('competition', {}).get('name', '') if isinstance(obj.get('competition'), dict) else ''
+                            
                             if home and away:
                                 extracted_text.append(f"{home} vs {away} ({comp})")
                         for k, v in obj.items():
@@ -50,14 +56,11 @@ def scrape_onefootball():
             except Exception:
                 pass
         
-        if not extracted_text:
-            for tag in soup.find_all(['span', 'div', 'a'], class_=lambda x: x and ('match' in x.lower() or 'team' in x.lower() or 'title' in x.lower())):
-                txt = tag.get_text(strip=True)
-                if txt and len(txt) < 50 and txt not in extracted_text:
-                    extracted_text.append(txt)
-        
         if extracted_text:
-            return "\n".join(extracted_text[:120]), None
+            # Rimuove eventuali duplicati mantenendo l'ordine
+            seen = set()
+            unique_matches = [m for m in extracted_text if not (m in seen or seen.add(m))]
+            return "\n".join(unique_matches[:100]), None
         
         return soup.get_text(separator="\n", strip=True)[:4000], None
 
@@ -66,7 +69,7 @@ def scrape_onefootball():
 
 
 def run_ai_analysis(match_data: str, api_key: str) -> str:
-    """Elabora l'analisi quantitativa tramite l'IA di Groq con pronostici concreti."""
+    """Elabora l'analisi quantitativa filtrando rigorosamente solo i match da giocare o live."""
     if not api_key:
         return "❌ Errore: GROQ_API_KEY non presente nei Secrets di Streamlit."
 
@@ -75,28 +78,28 @@ def run_ai_analysis(match_data: str, api_key: str) -> str:
         
         system_prompt = (
             "Sei un analista quantitativo e bookmaker professionista, specializzato in scommesse sportive. "
-            "REGINA ASSOLUTA DEI PRONOSTICI: non devi MAI usare etichette o categorie vuote (come 'Esito 1X2' o 'Under/Over'). "
-            "Devi indicare SEMPRE il pronostico concreto e specifico (es. Segno 1, Segno X, Segno 2, Gol, NoGol, Under 2.5, Over 2.5, ecc.)."
+            "REGOLA CRITICA SUL TEMPO: Ignora e scarta assolutamente qualsiasi partita che risulta già conclusa o terminata. "
+            "Analizza ESCLUSIVAMENTE le partite ancora da disputare o in corso di svolgimento."
         )
         
-        user_prompt = f"""Ecco i dati grezzi estratti in tempo reale da OneFootball (https://onefootball.com/it/partite):
+        user_prompt = f"""Ecco i dati grezzi estratti in tempo reale da OneFootball:
 -----------------
 {match_data}
 -----------------
 
 Istruzioni tassative:
-1. Analizza i dati sopra per identificare le partite reali in programma oggi, rispettando la natura della competizione (Campionato vs Coppa).
-2. Per OGNI partita identificata, genera una scheda tecnica strutturata rigorosamente in Markdown con questo formato esatto (VIETATO scrivere il nome del mercato generico):
+1. Filtra ed escludi qualsiasi match già terminato nel corso della giornata. Considera solo quelli futuri o live.
+2. Per OGNI partita valida identificata, genera una scheda tecnica strutturata rigorosamente in Markdown con questo formato esatto:
 
 ### [Squadra Casa] vs [Squadra Ospite] ([Competizione esatta])
 * **Contesto Tattico & Formula:** (Analisi di forma e specificando se è campionato o coppa a eliminazione diretta).
-* **Classi di Esito (Inserisci pronostici concreti, MAI categorie vuote):**
+* **Classi di Esito (Pronostici concreti):**
   * **Conservativa (Basso Rischio):** [Es. 1X / X2 / DNB Casa / Under 3.5]
   * **Principale (Medio Rischio):** [Es. Segno 1 / Segno 2 / Gol / Over 2.5]
   * **Speculativa (Alto Rischio):** [Es. Combo Segno 1 + Over 1.5 / Multigol 2-4]
 * **Cluster Risultati Esatti Coerenti:** [3 risultati esatti maggiormente probabilistici]
 
-Mantieni un tono rigoroso, professionale e privo di etichette vuote."""
+Mantieni un tono rigoroso, professionale e privo di match passati."""
 
         response = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
@@ -115,21 +118,21 @@ Mantieni un tono rigoroso, professionale e privo di etichette vuote."""
 # ---------------- INTERFACCIA STREAMLIT ----------------
 
 st.title("📊 Bet-Pro | OneFootball AI Sync")
-st.caption("Sincronizzazione live da OneFootball e analisi quantitativa avanzata con Llama 3.3.")
+st.caption("Sincronizzazione live da OneFootball con filtro anti-match terminati.")
 
 st.markdown("---")
 
 st.subheader("🎯 Gestione Palinsesto Live")
-st.write("Premi il pulsante sottostante per leggere in automatico le partite odierne da OneFootball ed eseguire l'analisi quantitativa completa.")
+st.write("Premi il pulsante sottostante per sincronizzare i match odierni escludendo quelli già conclusi.")
 
 if st.button("🚀 Sincronizza OneFootball e Avvia Analisi", type="primary", use_container_width=True):
-    with st.spinner("Connessione a OneFootball in corso..."):
+    with st.spinner("Connessione e filtraggio palinsesto in corso..."):
         raw_data, err = scrape_onefootball()
         
         if err or not raw_data:
             st.error(f"Impossibile completare la lettura del sito: {err}")
         else:
-            with st.spinner("L'IA sta elaborando l'analisi incrociata e i pronostici dei match..."):
+            with st.spinner("L'IA sta elaborando l'analisi quantitativa dei match validi..."):
                 result = run_ai_analysis(raw_data, GROQ_API_KEY)
                 st.session_state["analysis_result"] = result
 
@@ -137,4 +140,4 @@ if st.session_state["analysis_result"]:
     st.markdown("---")
     st.subheader("📋 Risultati dell'Analisi Quantitativa")
     st.markdown(st.session_state["analysis_result"])
-                                     
+    
