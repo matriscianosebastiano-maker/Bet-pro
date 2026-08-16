@@ -11,12 +11,12 @@ if "prompt_text" not in st.session_state:
 
 
 def run_ai_bet_analysis(user_query: str, api_key: str) -> str:
-    """Invia il prompt a Gemini tramite la REST API ufficiale (Interactions / v1beta)."""
+    """Invia il prompt a Gemini tramite la REST API v1beta."""
     if not api_key:
         return "❌ Errore: GEMINI_API_KEY non presente nei Secrets di Streamlit."
 
-    api_key = api_key.strip()
-    
+    cleaned_key = api_key.strip()
+
     prompt = f"""Sei un analista quantitativo e statistico specializzato in scommesse sportive.
 Richiesta/Palinsesto utente:
 "{user_query}"
@@ -35,33 +35,34 @@ Istruzioni:
 
 Mantieni un tono analitico, diretto e privo di fronzoli."""
 
-    # Tentativo 1: Chiamata diretta v1beta con alias modello aggiornato
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash:generateContent?key={api_key}"
-    headers = {"Content-Type": "application/json"}
     payload = {
-        "contents": [{"parts": [{"text": prompt}]}]
+        "contents": [
+            {
+                "parts": [
+                    {"text": prompt}
+                ]
+            }
+        ]
     }
+    headers = {"Content-Type": "application/json"}
 
-    try:
-        res = requests.post(url, headers=headers, data=json.dumps(payload), timeout=15)
-        if res.status_code == 200:
-            data = res.json()
-            return data["candidates"][0]["content"]["parts"][0]["text"]
-    except Exception:
-        pass
+    # Modelli attivi accertati da provare in sequenza
+    models_to_try = ["gemini-1.5-flash", "gemini-2.0-flash-exp", "gemini-1.5-pro"]
+    logs = []
 
-    # Tentativo 2: Fallback su alias gemini-2.0-flash-exp / gemini-1.5-flash
-    for alt_model in ["gemini-2.0-flash-exp", "gemini-1.5-flash"]:
-        url_alt = f"https://generativelanguage.googleapis.com/v1beta/models/{alt_model}:generateContent?key={api_key}"
+    for model in models_to_try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={cleaned_key}"
         try:
-            res = requests.post(url_alt, headers=headers, data=json.dumps(payload), timeout=15)
+            res = requests.post(url, headers=headers, json=payload, timeout=20)
             if res.status_code == 200:
                 data = res.json()
                 return data["candidates"][0]["content"]["parts"][0]["text"]
-        except Exception:
-            continue
+            else:
+                logs.append(f"• Model '{model}': HTTP {res.status_code} - {res.text}")
+        except Exception as e:
+            logs.append(f"• Model '{model}': Errore eccezione {e}")
 
-    return "❌ Errore di comunicazione con Gemini. Verifica che la chiave API sia attiva su Google AI Studio."
+    return "❌ **Errore di comunicazione con l'API Google:**\n\n" + "\n".join(logs)
 
 
 # ---------------- INTERFACCIA STREAMLIT ----------------
