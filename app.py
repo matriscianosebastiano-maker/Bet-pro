@@ -3,7 +3,7 @@ import requests
 import pandas as pd
 from google import genai
 
-st.set_page_config(page_title="Bet-Pro | Palinsesto Football-Data", page_icon="📊", layout="centered")
+st.set_page_config(page_title="Bet-Pro | Palinsesto & Classi di Esito", page_icon="📊", layout="centered")
 
 FOOTBALL_DATA_KEY = st.secrets.get("FOOTBALL_DATA_KEY", "")
 GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "")
@@ -77,7 +77,7 @@ Mantieni un tono analitico, essenziale e basato solo sulla logica calcistica."""
 
     try:
         response = client.models.generate_content(
-            model="gemini-1.5-flash",
+            model="gemini-2.5-flash",
             contents=prompt
         )
         return response.text if response else "Nessun output dall'IA."
@@ -126,4 +126,4 @@ if st.session_state["df_matches"] is not None and not st.session_state["df_match
             with st.spinner("Analisi in corso sulle partite..."):
                 analysis_output = analyze_with_ai(df_m, GEMINI_API_KEY)
                 st.markdown(analysis_output)
-                
+            
