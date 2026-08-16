@@ -1,29 +1,28 @@
 import streamlit as st
-from google import genai
-from google.genai import types
+import requests
+import json
 
 st.set_page_config(page_title="Bet-Pro | Assistente IA 100%", page_icon="📊", layout="centered")
 
 GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "")
 
-# Inizializza lo stato del testo in sessione
 if "prompt_text" not in st.session_state:
     st.session_state["prompt_text"] = ""
 
 
 def run_ai_bet_analysis(user_query: str, api_key: str) -> str:
-    """Utilizza Gemini per analizzare i match e ricavare esiti probabilistici."""
+    """Invia il prompt a Gemini tramite la REST API ufficiale (Interactions / v1beta)."""
     if not api_key:
         return "❌ Errore: GEMINI_API_KEY non presente nei Secrets di Streamlit."
 
-    client = genai.Client(api_key=api_key.strip())
+    api_key = api_key.strip()
     
     prompt = f"""Sei un analista quantitativo e statistico specializzato in scommesse sportive.
 Richiesta/Palinsesto utente:
 "{user_query}"
 
 Istruzioni:
-1. Recupera o analizza le informazioni sui match indicati (orari, stato di forma, competizioni).
+1. Analizza i match indicati ed elabora i pronostici.
 2. Per OGNI partita individuata, fornisci l'analisi strutturata in Markdown:
 
 ### [Squadra Casa] vs [Squadra Ospite] ([Competizione])
@@ -36,36 +35,33 @@ Istruzioni:
 
 Mantieni un tono analitico, diretto e privo di fronzoli."""
 
-    models_to_try = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
-    errors = []
+    # Tentativo 1: Chiamata diretta v1beta con alias modello aggiornato
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash:generateContent?key={api_key}"
+    headers = {"Content-Type": "application/json"}
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}]
+    }
 
-    # Tentativo 1: Con Google Search Grounding (dati live)
-    for model_id in models_to_try:
+    try:
+        res = requests.post(url, headers=headers, data=json.dumps(payload), timeout=15)
+        if res.status_code == 200:
+            data = res.json()
+            return data["candidates"][0]["content"]["parts"][0]["text"]
+    except Exception:
+        pass
+
+    # Tentativo 2: Fallback su alias gemini-2.0-flash-exp / gemini-1.5-flash
+    for alt_model in ["gemini-2.0-flash-exp", "gemini-1.5-flash"]:
+        url_alt = f"https://generativelanguage.googleapis.com/v1beta/models/{alt_model}:generateContent?key={api_key}"
         try:
-            config = types.GenerateContentConfig(tools=[{"google_search": {}}])
-            response = client.models.generate_content(
-                model=model_id,
-                contents=prompt,
-                config=config
-            )
-            if response and response.text:
-                return response.text
-        except Exception as e:
-            errors.append(f"{model_id} (Search): {e}")
+            res = requests.post(url_alt, headers=headers, data=json.dumps(payload), timeout=15)
+            if res.status_code == 200:
+                data = res.json()
+                return data["candidates"][0]["content"]["parts"][0]["text"]
+        except Exception:
+            continue
 
-    # Tentativo 2: Senza Search Grounding (Fallback standard)
-    for model_id in models_to_try:
-        try:
-            response = client.models.generate_content(
-                model=model_id,
-                contents=prompt
-            )
-            if response and response.text:
-                return response.text
-        except Exception as e:
-            errors.append(f"{model_id} (Std): {e}")
-
-    return f"❌ Impossibile completare l'analisi:\n\n" + "\n".join(errors)
+    return "❌ Errore di comunicazione con Gemini. Verifica che la chiave API sia attiva su Google AI Studio."
 
 
 # ---------------- INTERFACCIA STREAMLIT ----------------
@@ -105,7 +101,6 @@ if st.button("Elabora Esiti con l'IA", type="primary", use_container_width=True)
     elif not GEMINI_API_KEY:
         st.error("Assicurati di aver configurato GEMINI_API_KEY nei Secrets di Streamlit.")
     else:
-        with st.spinner("L'IA sta cercando i dati ed elaborando i pronostici..."):
+        with st.spinner("L'IA sta elaborando l'analisi quantitativa dei match..."):
             result = run_ai_bet_analysis(user_input, GEMINI_API_KEY)
             st.markdown(result)
-            
