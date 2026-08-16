@@ -3,7 +3,7 @@ import requests
 import pandas as pd
 from google import genai
 
-st.set_page_config(page_title="Analisi quote sportive", page_icon="📊", layout="centered")
+st.set_page_config(page_title="Bet-Pro | Analisi quote sportive", page_icon="📊", layout="centered")
 
 GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "")
 ODDS_API_KEY = st.secrets.get("ODDS_API_KEY", "")
@@ -78,7 +78,12 @@ def compute_market_probabilities(df: pd.DataFrame) -> pd.DataFrame:
         q1, qx, q2 = row["Quota_1"], row["Quota_X"], row["Quota_2"]
         if not (q1 and q2):
             continue
-        if qx:
+        
+        # Prevenzione divisione per zero in caso di quote errate a 0 o negative
+        if q1 <= 0 or q2 <= 0 or (pd.notna(qx) and qx <= 0):
+            continue
+
+        if pd.notna(qx) and qx > 0:
             p1, px, p2 = 1 / q1, 1 / qx, 1 / q2
             overround = p1 + px + p2
             outcomes = [("1", p1 / overround), ("X", px / overround), ("2", p2 / overround)]
@@ -116,7 +121,7 @@ def suggested_stake(bankroll: float, odds: float, own_prob_pct: float, risk_key:
 
 # ---------------- INTERFACCIA ----------------
 
-st.title("📊 Analisi quote sportive")
+st.title("📊 Bet-Pro | Analisi quote sportive")
 st.caption(
     "Legge il mercato in modo trasparente. Non genera schedine automatiche né pronostici "
     "'garantiti' — ogni puntata resta una tua scelta manuale, fatta sul sito del tuo bookmaker."
@@ -199,15 +204,17 @@ Per ciascun match scrivi 2-3 righe di contesto (forma, importanza della gara, as
 Chiudi con una riga che ricordi che sono probabilità di mercato, non previsioni garantite."""
                 try:
                     client = genai.Client(api_key=GEMINI_API_KEY)
-                    # Verifica il nome modello aggiornato nella documentazione ufficiale Google AI:
-                    # "gemini-3.5-flash" nell'app originale non risulta tra i modelli documentati.
-                    response = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
+                    # Corretto il modello per utilizzare la versione flash funzionante
+                    response = client.models.generate_content(
+                        model="gemini-1.5-flash", 
+                        contents=prompt
+                    )
                     if response and response.text:
                         st.markdown(response.text)
                     else:
                         st.warning("Nessuna risposta generata, riprova.")
                 except Exception as e:
-                    st.warning(f"Generazione non riuscita: {e}")
+                    st.error(f"Errore durante l'analisi IA: {e}")
     else:
         st.caption("Imposta GEMINI_API_KEY nei secrets per abilitare la lettura di contesto testuale (facoltativa).")
 
