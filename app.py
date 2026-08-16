@@ -1,7 +1,6 @@
 import streamlit as st
 import requests
 from bs4 import BeautifulSoup
-import json
 from groq import Groq
 
 st.set_page_config(page_title="Bet-Pro | OneFootball AI Sync", page_icon="📊", layout="centered")
@@ -13,7 +12,7 @@ if "analysis_result" not in st.session_state:
 
 
 def scrape_onefootball():
-    """Esegue il fetch live e filtra escludendo le partite già terminate."""
+    """Esegue il fetch live e isola solo le partite future o con orario valido."""
     url = "https://onefootball.com/it/partite"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
@@ -26,50 +25,46 @@ def scrape_onefootball():
         
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        script_tag = soup.find('script', id='__NEXT_DATA__')
-        extracted_text = []
+        valid_matches = []
         
-        if script_tag:
-            try:
-                data = json.loads(script_tag.string)
-                def extract_matches(obj):
-                    if isinstance(obj, dict):
-                        if 'homeTeam' in obj and 'awayTeam' in obj:
-                            # Controlla lo stato della partita per scartare quelle finite
-                            status = str(obj.get('matchStatus', obj.get('status', obj.get('matchState', '')))).lower()
-                            if any(term in status for term in ['finished', 'ft', 'ended', 'conclusa', 'terminata', 'full-time', 'closed']):
-                                return # Salta la partita se è già finita
-                            
-                            home = obj['homeTeam'].get('name', '') if isinstance(obj['homeTeam'], dict) else str(obj['homeTeam'])
-                            away = obj['awayTeam'].get('name', '') if isinstance(obj['awayTeam'], dict) else str(obj['awayTeam'])
-                            comp = obj.get('competition', {}).get('name', '') if isinstance(obj.get('competition'), dict) else ''
-                            
-                            if home and away:
-                                extracted_text.append(f"{home} vs {away} ({comp})")
-                        for k, v in obj.items():
-                            extract_matches(v)
-                    elif isinstance(obj, list):
-                        for item in obj:
-                            extract_matches(item)
+        # Cerca i contenitori dei match o le celle degli eventi nel DOM di OneFootball
+        # Di solito le partite sono all'interno di elementi specifici o link con nomi squadre
+        match_elements = soup.find_all(['div', 'a'], class_=lambda x: x and any(c in x.lower() for c in ['match', 'event', 'cell', 'score']))
+        
+        for el in match_elements:
+            text = el.get_text(separator=" | ", strip=True)
+            # Filtra per elementi che contengono una struttura "Squadra vs Squadra" o indicatori di orario (es. cifre con i due punti come 20:45)
+            if " vs " in text or " - " in text:
+                # Esclude righe palesemente concluse o testi di servizio
+                lower_text = text.lower()
+                if any(term in lower_text for term in ['fin', 'ft', 'terminata', 'conclusa', '1-', '2-', '3-']):
+                    # Se contiene uno score numerico tipico di fine partita, lo scartiamo a meno che non ci sia un orario futuro
+                    if not any(hour in text for hour in [":00", ":15", ":30", ":45"]):
+                        continue
                 
-                extract_matches(data)
-            except Exception:
-                pass
+                if len(text) < 150 and text not in valid_matches:
+                    valid_matches.append(text)
         
-        if extracted_text:
-            # Rimuove eventuali duplicati mantenendo l'ordine
-            seen = set()
-            unique_matches = [m for m in extracted_text if not (m in seen or seen.add(m))]
-            return "\n".join(unique_matches[:100]), None
+        # Fallback di sicurezza se i selettori mirati non restituiscono abbastanza righe
+        if not valid_matches:
+            for line in soup.get_text(separator="\n", strip=True).split("\n"):
+                if " - " in line or " vs " in line:
+                    if len(line.strip()) > 5 and len(line.strip()) < 80:
+                        valid_matches.append(line.strip())
+
+        unique_matches = list(dict.fromkeys(valid_matches))
         
-        return soup.get_text(separator="\n", strip=True)[:4000], None
+        if unique_matches:
+            return "\n".join(unique_matches[:80]), None
+        
+        return None, "Nessuna partita valida trovata nella pagina."
 
     except Exception as e:
         return None, str(e)
 
 
 def run_ai_analysis(match_data: str, api_key: str) -> str:
-    """Elabora l'analisi quantitativa filtrando rigorosamente solo i match da giocare o live."""
+    """Elabora l'analisi quantitativa filtrando rigorosamente solo i match da disputare."""
     if not api_key:
         return "❌ Errore: GROQ_API_KEY non presente nei Secrets di Streamlit."
 
@@ -78,21 +73,21 @@ def run_ai_analysis(match_data: str, api_key: str) -> str:
         
         system_prompt = (
             "Sei un analista quantitativo e bookmaker professionista, specializzato in scommesse sportive. "
-            "REGOLA CRITICA SUL TEMPO: Ignora e scarta assolutamente qualsiasi partita che risulta già conclusa o terminata. "
-            "Analizza ESCLUSIVAMENTE le partite ancora da disputare o in corso di svolgimento."
+            "REGOLA TEMPORALE TASSATIVA: Devi scartare assolutamente qualsiasi match già terminato, concluso o che mostra un risultato finale. "
+            "Seleziona ed elabora ESCLUSIVAMENTE le partite che devono ancora iniziare o che hanno un orario futuro nella giornata odierna."
         )
         
-        user_prompt = f"""Ecco i dati grezzi estratti in tempo reale da OneFootball:
+        user_prompt = f"""Ecco i dati grezzi estratti da OneFootball:
 -----------------
 {match_data}
 -----------------
 
 Istruzioni tassative:
-1. Filtra ed escludi qualsiasi match già terminato nel corso della giornata. Considera solo quelli futuri o live.
-2. Per OGNI partita valida identificata, genera una scheda tecnica strutturata rigorosamente in Markdown con questo formato esatto:
+1. Estrai solo le partite reali ancora da giocare oggi, scartando scorie, risultati finali e testo non pertinente.
+2. Per OGNI partita valida trovata, genera una scheda tecnica rigorosamente in Markdown con questo formato esatto:
 
-### [Squadra Casa] vs [Squadra Ospite] ([Competizione esatta])
-* **Contesto Tattico & Formula:** (Analisi di forma e specificando se è campionato o coppa a eliminazione diretta).
+### [Squadra Casa] vs [Squadra Ospite] ([Competizione])
+* **Contesto Tattico & Formula:** (Analisi di forma e specificando se è campionato o coppa)
 * **Classi di Esito (Pronostici concreti):**
   * **Conservativa (Basso Rischio):** [Es. 1X / X2 / DNB Casa / Under 3.5]
   * **Principale (Medio Rischio):** [Es. Segno 1 / Segno 2 / Gol / Over 2.5]
@@ -118,15 +113,15 @@ Mantieni un tono rigoroso, professionale e privo di match passati."""
 # ---------------- INTERFACCIA STREAMLIT ----------------
 
 st.title("📊 Bet-Pro | OneFootball AI Sync")
-st.caption("Sincronizzazione live da OneFootball con filtro anti-match terminati.")
+st.caption("Sincronizzazione live da OneFootball con controllo orario e filtro partite concluse.")
 
 st.markdown("---")
 
 st.subheader("🎯 Gestione Palinsesto Live")
-st.write("Premi il pulsante sottostante per sincronizzare i match odierni escludendo quelli già conclusi.")
+st.write("Premi il pulsante per sincronizzare i match odierni escludendo quelli già archiviati.")
 
 if st.button("🚀 Sincronizza OneFootball e Avvia Analisi", type="primary", use_container_width=True):
-    with st.spinner("Connessione e filtraggio palinsesto in corso..."):
+    with st.spinner("Connessione e filtraggio orari in corso..."):
         raw_data, err = scrape_onefootball()
         
         if err or not raw_data:
