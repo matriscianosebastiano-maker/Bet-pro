@@ -1,5 +1,5 @@
 streamlit
-openai
+groq
 requests
 pandas
 google-genai
