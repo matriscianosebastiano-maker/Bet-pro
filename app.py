@@ -1,124 +1,97 @@
 import streamlit as st
-import requests
-import pandas as pd
 from google import genai
+from google.genai import types
 
-st.set_page_config(page_title="Bet-Pro | Analisi Palinsesto", page_icon="📊", layout="centered")
+st.set_page_config(page_title="Bet-Pro | Assistente IA 100%", page_icon="📊", layout="centered")
 
-FOOTBALL_DATA_KEY = st.secrets.get("FOOTBALL_DATA_KEY", "")
 GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "")
 
-
-@st.cache_data(ttl=3600)
-def fetch_matches(api_key: str):
-    """Estrae le partite dal palinsesto di Football-Data.org."""
+def run_ai_bet_analysis(user_query: str, api_key: str) -> str:
+    """Utilizza Gemini con Google Search Grounding per analizzare i match e ricavare esiti probabilistici."""
     if not api_key:
-        return pd.DataFrame(), "Chiave FOOTBALL_DATA_KEY non configurata nei Secrets."
-
-    url = "https://api.football-data.org/v4/matches"
-    headers = {"X-Auth-Token": api_key.strip()}
+        return "⚠️ Errore: `GEMINI_API_KEY` non presente nei Secrets di Streamlit."
 
     try:
-        res = requests.get(url, headers=headers, timeout=8)
-        if res.status_code in [401, 403]:
-            return pd.DataFrame(), "Chiave API Football-Data non valida."
-        if res.status_code == 429:
-            return pd.DataFrame(), "Troppe richieste. Attendi 1 minuto."
+        client = genai.Client(api_key=api_key.strip())
+        
+        prompt = f"""Sei un analista quantitativo e statistico specializzato in scommesse sportive.
+Richiesta/Palinsesto utente:
+"{user_query}"
 
-        res.raise_for_status()
-        matches_list = res.json().get("matches", [])
+Istruzioni:
+1. Recupera le informazioni live/aggiornate sui match indicati (orari, stato di forma, competizioni).
+2. Per OGNI partita individuata, fornisci l'analisi strutturata in Markdown:
 
-        matches = []
-        for m in matches_list:
-            home = m.get("homeTeam", {}).get("name", "")
-            away = m.get("awayTeam", {}).get("name", "")
-            if home and away:
-                matches.append({
-                    "Competizione": m.get("competition", {}).get("name", "—"),
-                    "Data_Ora": (m.get("utcDate", "") or "").replace("T", " ")[:16],
-                    "Match": f"{home} vs {away}"
-                })
+### ⚽ [Squadra Casa] vs [Squadra Ospite] ([Competizione])
+* **Contesto Tattico:** (Breve quadro statistico e di forma)
+* **Classi di Esito:**
+  * 🟢 **Conservativa (Basso Rischio):** [Es. 1X / Doppia Chance / DNB]
+  * 🟡 **Principale (Medio Rischio):** [Es. Esito 1X2 / Gol-NoGol / Under/Over 2.5]
+  * 🔴 **Speculativa (Alto Rischio):** [Es. Combo / Multigol preciso]
+* **Cluster Risultati Esatti Coerenti:** [3 risultati esatti maggiormente probabilistici]
 
-        if not matches:
-            return pd.DataFrame(), "Nessun match in palinsesto al momento."
+Mantieni un tono analitico, diretto e privo di fronzoli."""
 
-        return pd.DataFrame(matches).reset_index(drop=True), None
+        # Abilita la ricerca Google integrata per attingere ai dati di oggi in tempo reale
+        config = types.GenerateContentConfig(
+            tools=[{"google_search": {}}]
+        )
+
+        # Tentativo primario su gemini-2.5-flash / gemini-2.0-flash
+        for model_id in ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]:
+            try:
+                response = client.models.generate_content(
+                    model=model_id,
+                    contents=prompt,
+                    config=config
+                )
+                if response and response.text:
+                    return response.text
+            except Exception:
+                continue
+
+        return "Errore nell'elaborazione con i modelli disponibili."
 
     except Exception as e:
-        return pd.DataFrame(), f"Errore connessione: {e}"
-
-
-def analyze_matches(df: pd.DataFrame, api_key: str):
-    """Analizza il palinsesto ed elabora gli esiti tentando i modelli Gemini attivi."""
-    client = genai.Client(api_key=api_key)
-    
-    prompt = f"""Sei un esperto di analisi sportiva. Ricevi in ingresso questo palinsesto di partite:
-
-{df.to_string(index=False)}
-
-Per ciascuna partita elenca gli esiti più probabili secondo questa struttura semplice:
-
-### ⚽ [Match] ([Competizione])
-* **Esito Consigliato:** [1 / X / 2 / Doppia Chance]
-* **Gol / NoGol:** [Es. Gol o NoGol con motivazione sintetica]
-* **Under / Over 2.5:** [Es. Over 2.5 o Under 2.5]
-* **Risultato Esatto Ipotizzabile:** [Es. 2-1]
-"""
-
-    # Lista di fallback per garantire che venga usata una versione modello valida
-    candidate_models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-flash"]
-    last_error = None
-
-    for model_name in candidate_models:
-        try:
-            response = client.models.generate_content(
-                model=model_name,
-                contents=prompt
-            )
-            if response and response.text:
-                return response.text
-        except Exception as e:
-            last_error = e
-            continue
-
-    return f"Errore analisi IA (tutti i modelli provati non sono disponibili): {last_error}"
+        return f"Errore durante l'elaborazione dell'IA: {e}"
 
 
 # ---------------- INTERFACCIA STREAMLIT ----------------
 
-st.title("📊 Bet-Pro | Analisi Palinsesto IA")
-st.caption("Estrae i match in ingresso ed elabora gli esiti attraverso l'IA.")
+st.title("📊 Bet-Pro | Analista Scommesse IA")
+st.caption("Sistema 100% IA autonomo. Nessun limite da API esterne, copertura globale su qualsiasi partita e coppa.")
 
-if "df_matches" not in st.session_state:
-    st.session_state["df_matches"] = None
+st.subheader("💡 Cosa vuoi analizzare oggi?")
 
-col1, col2 = st.columns([3, 1])
-with col1:
-    if st.button("🔍 Carica Palinsesto Match", type="primary", use_container_width=True):
-        with st.spinner("Download palinsesto..."):
-            df, err = fetch_matches(FOOTBALL_DATA_KEY)
-            if err:
-                st.error(err)
-            else:
-                st.session_state["df_matches"] = df
-                st.success("Palinsesto caricato!")
+# Esempi rapidi
+col_a, col_b, col_c = st.columns(3)
+quick_input = None
 
-with col2:
-    if st.button("🔄 Reset", use_container_width=True):
-        st.cache_data.clear()
-        st.session_state["df_matches"] = None
-        st.rerun()
+with col_a:
+    if st.button("🏆 Coppa Italia Oggi", use_container_width=True):
+        quick_input = "Analizza tutte le partite di Coppa Italia in programma oggi con relativi esiti e risultati esatti."
+with col_b:
+    if st.button("🏴󠁧󠁢󠁥󠁮󠁧󠁿 Community Shield", use_container_width=True):
+        quick_input = "Analizza la partita di oggi Arsenal vs Manchester City fornendo le classi di esito e i risultati esatti."
+with col_c:
+    if st.button("🌍 Mix Palinsesto", use_container_width=True):
+        quick_input = "Analizza le principali partite di oggi in Europa (Coppa Italia, Ligue 1, Eredivisie, Primeira Liga)."
 
-if st.session_state["df_matches"] is not None and not st.session_state["df_matches"].empty:
-    st.subheader("📋 Match in Ingresso")
-    st.dataframe(st.session_state["df_matches"], use_container_width=True)
+# Area di testo per input personalizzato o incolla schedina
+user_input = st.text_area(
+    "Oppure scrivi le partite / incolla il tuo palinsesto qui sotto:",
+    value=quick_input if quick_input else "",
+    placeholder="Es: Lazio vs Mantova, Genoa vs Ascoli, Frosinone vs Juve Stabia...",
+    height=120
+)
 
-    st.divider()
-    if not GEMINI_API_KEY:
-        st.warning("Inserisci `GEMINI_API_KEY` nei Secrets per attivare l'IA.")
+if st.button("🚀 Elabora Esiti con l'IA", type="primary", use_container_width=True):
+    if not user_input.strip():
+        st.warning("Inserisci prima un testo o seleziona una delle opzioni rapide sopra.")
+    elif not GEMINI_API_KEY:
+        st.error("Assicurati di aver configurato `GEMINI_API_KEY` nei Secrets di Streamlit.")
     else:
-        if st.button("🧠 Elabora Esiti con IA", type="primary", use_container_width=True):
-            with st.spinner("Elaborazione esiti in corso..."):
-                res = analyze_matches(st.session_state["df_matches"], GEMINI_API_KEY)
-                st.markdown(res)
-                
+        with st.spinner("L'IA sta cercando i dati aggiornati ed elaborando i pronostici..."):
+            result = run_ai_bet_analysis(user_input, GEMINI_API_KEY)
+            st.markdown(result)
+            
