@@ -6,20 +6,24 @@ st.set_page_config(page_title="Bet-Pro | Assistente IA 100%", page_icon="📊", 
 
 GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "")
 
-def run_ai_bet_analysis(user_query: str, api_key: str) -> str:
-    """Utilizza Gemini con Google Search per analizzare i match e ricavare esiti probabilistici."""
-    if not api_key:
-        return "Errore: GEMINI_API_KEY non presente nei Secrets di Streamlit."
+# Inizializza lo stato del testo in sessione
+if "prompt_text" not in st.session_state:
+    st.session_state["prompt_text"] = ""
 
-    try:
-        client = genai.Client(api_key=api_key.strip())
-        
-        prompt = f"""Sei un analista quantitativo e statistico specializzato in scommesse sportive.
+
+def run_ai_bet_analysis(user_query: str, api_key: str) -> str:
+    """Utilizza Gemini per analizzare i match e ricavare esiti probabilistici."""
+    if not api_key:
+        return "❌ Errore: GEMINI_API_KEY non presente nei Secrets di Streamlit."
+
+    client = genai.Client(api_key=api_key.strip())
+    
+    prompt = f"""Sei un analista quantitativo e statistico specializzato in scommesse sportive.
 Richiesta/Palinsesto utente:
 "{user_query}"
 
 Istruzioni:
-1. Recupera le informazioni live e aggiornate sui match indicati (orari, stato di forma, competizioni).
+1. Recupera o analizza le informazioni sui match indicati (orari, stato di forma, competizioni).
 2. Per OGNI partita individuata, fornisci l'analisi strutturata in Markdown:
 
 ### [Squadra Casa] vs [Squadra Ospite] ([Competizione])
@@ -32,26 +36,36 @@ Istruzioni:
 
 Mantieni un tono analitico, diretto e privo di fronzoli."""
 
-        config = types.GenerateContentConfig(
-            tools=[{"google_search": {}}]
-        )
+    models_to_try = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+    errors = []
 
-        for model_id in ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]:
-            try:
-                response = client.models.generate_content(
-                    model=model_id,
-                    contents=prompt,
-                    config=config
-                )
-                if response and response.text:
-                    return response.text
-            except Exception:
-                continue
+    # Tentativo 1: Con Google Search Grounding (dati live)
+    for model_id in models_to_try:
+        try:
+            config = types.GenerateContentConfig(tools=[{"google_search": {}}])
+            response = client.models.generate_content(
+                model=model_id,
+                contents=prompt,
+                config=config
+            )
+            if response and response.text:
+                return response.text
+        except Exception as e:
+            errors.append(f"{model_id} (Search): {e}")
 
-        return "Errore nell'elaborazione con i modelli disponibili."
+    # Tentativo 2: Senza Search Grounding (Fallback standard)
+    for model_id in models_to_try:
+        try:
+            response = client.models.generate_content(
+                model=model_id,
+                contents=prompt
+            )
+            if response and response.text:
+                return response.text
+        except Exception as e:
+            errors.append(f"{model_id} (Std): {e}")
 
-    except Exception as e:
-        return f"Errore durante l'elaborazione dell'IA: {e}"
+    return f"❌ Impossibile completare l'analisi:\n\n" + "\n".join(errors)
 
 
 # ---------------- INTERFACCIA STREAMLIT ----------------
@@ -62,21 +76,25 @@ st.caption("Sistema 100% IA autonomo. Nessun limite da API esterne, copertura gl
 st.subheader("Cosa vuoi analizzare oggi?")
 
 col_a, col_b, col_c = st.columns(3)
-quick_input = None
 
 with col_a:
     if st.button("Coppa Italia Oggi", use_container_width=True):
-        quick_input = "Analizza tutte le partite di Coppa Italia in programma oggi con relativi esiti e risultati esatti."
+        st.session_state["prompt_text"] = "Analizza tutte le partite di Coppa Italia in programma oggi con relativi esiti e risultati esatti."
+        st.rerun()
+
 with col_b:
     if st.button("Community Shield", use_container_width=True):
-        quick_input = "Analizza la partita di oggi Arsenal vs Manchester City fornendo le classi di esito e i risultati esatti."
+        st.session_state["prompt_text"] = "Analizza la partita di oggi Arsenal vs Manchester City fornendo le classi di esito e i risultati esatti."
+        st.rerun()
+
 with col_c:
     if st.button("Mix Palinsesto", use_container_width=True):
-        quick_input = "Analizza le principali partite di oggi in Europa (Coppa Italia, Ligue 1, Eredivisie, Primeira Liga)."
+        st.session_state["prompt_text"] = "Analizza le principali partite di oggi in Europa (Coppa Italia, Ligue 1, Eredivisie, Primeira Liga)."
+        st.rerun()
 
 user_input = st.text_area(
     "Oppure scrivi le partite / incolla il tuo palinsesto qui sotto:",
-    value=quick_input if quick_input else "",
+    key="prompt_text",
     placeholder="Es: Lazio vs Mantova, Genoa vs Ascoli, Frosinone vs Juve Stabia...",
     height=120
 )
@@ -87,7 +105,7 @@ if st.button("Elabora Esiti con l'IA", type="primary", use_container_width=True)
     elif not GEMINI_API_KEY:
         st.error("Assicurati di aver configurato GEMINI_API_KEY nei Secrets di Streamlit.")
     else:
-        with st.spinner("L'IA sta cercando i dati aggiornati ed elaborando i pronostici..."):
+        with st.spinner("L'IA sta cercando i dati ed elaborando i pronostici..."):
             result = run_ai_bet_analysis(user_input, GEMINI_API_KEY)
             st.markdown(result)
             
