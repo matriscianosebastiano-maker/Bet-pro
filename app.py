@@ -49,7 +49,7 @@ def fetch_matches(api_key: str):
 
 
 def analyze_matches(df: pd.DataFrame, api_key: str):
-    """Analizza il palinsesto in ingresso ed elabora gli esiti tramite IA."""
+    """Analizza il palinsesto ed elabora gli esiti tentando i modelli Gemini attivi."""
     client = genai.Client(api_key=api_key)
     
     prompt = f"""Sei un esperto di analisi sportiva. Ricevi in ingresso questo palinsesto di partite:
@@ -65,17 +65,26 @@ Per ciascuna partita elenca gli esiti più probabili secondo questa struttura se
 * **Risultato Esatto Ipotizzabile:** [Es. 2-1]
 """
 
-    try:
-        response = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=prompt
-        )
-        return response.text if response else "Nessuna risposta generata."
-    except Exception as e:
-        return f"Errore analisi IA: {e}"
+    # Lista di fallback per garantire che venga usata una versione modello valida
+    candidate_models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-flash"]
+    last_error = None
+
+    for model_name in candidate_models:
+        try:
+            response = client.models.generate_content(
+                model=model_name,
+                contents=prompt
+            )
+            if response and response.text:
+                return response.text
+        except Exception as e:
+            last_error = e
+            continue
+
+    return f"Errore analisi IA (tutti i modelli provati non sono disponibili): {last_error}"
 
 
-# ---------------- INTERFACCIA ----------------
+# ---------------- INTERFACCIA STREAMLIT ----------------
 
 st.title("📊 Bet-Pro | Analisi Palinsesto IA")
 st.caption("Estrae i match in ingresso ed elabora gli esiti attraverso l'IA.")
