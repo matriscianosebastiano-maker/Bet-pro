@@ -1,25 +1,24 @@
 import streamlit as st
-from openai import OpenAI
+from groq import Groq
 
 st.set_page_config(page_title="Bet-Pro | Assistente IA 100%", page_icon="📊", layout="centered")
 
-OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", "")
+GROQ_API_KEY = st.secrets.get("GROQ_API_KEY", "")
 
 if "prompt_text" not in st.session_state:
     st.session_state["prompt_text"] = ""
 
 
 def run_ai_bet_analysis(user_query: str, api_key: str) -> str:
-    """Utilizza l'API di OpenAI per elaborare l'analisi quantitativa dei match."""
+    """Utilizza l'API ultra-rapida di Groq con Llama 3.3 per l'analisi dei match."""
     if not api_key:
-        return "❌ Errore: OPENAI_API_KEY non presente nei Secrets di Streamlit."
+        return "❌ Errore: GROQ_API_KEY non presente nei Secrets di Streamlit."
 
     try:
-        client = OpenAI(api_key=api_key.strip())
+        client = Groq(api_key=api_key.strip())
 
-        system_prompt = """Sei un analista quantitativo e statistico specializzato in scommesse sportive.
-Il tuo compito è analizzare i match forniti ed elaborare pronostici probabilistici strutturati."""
-
+        system_prompt = "Sei un analista quantitativo e statistico specializzato in scommesse sportive."
+        
         user_prompt = f"""Richiesta/Palinsesto utente:
 "{user_query}"
 
@@ -38,7 +37,7 @@ Istruzioni:
 Mantieni un tono analitico, diretto e privo di fronzoli."""
 
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="llama-3.3-70b-versatile",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
@@ -49,13 +48,13 @@ Mantieni un tono analitico, diretto e privo di fronzoli."""
         return response.choices[0].message.content
 
     except Exception as e:
-        return f"❌ Errore durante la chiamata a OpenAI: {e}"
+        return f"❌ Errore durante la chiamata a Groq: {e}"
 
 
 # ---------------- INTERFACCIA STREAMLIT ----------------
 
 st.title("📊 Bet-Pro | Analista Scommesse IA")
-st.caption("Sistema 100% IA autonomo alimentato da OpenAI GPT-4o-mini.")
+st.caption("Sistema 100% IA autonomo alimentato da Groq (Llama 3.3).")
 
 st.subheader("Cosa vuoi analizzare oggi?")
 
@@ -86,10 +85,10 @@ user_input = st.text_area(
 if st.button("Elabora Esiti con l'IA", type="primary", use_container_width=True):
     if not user_input.strip():
         st.warning("Inserisci prima un testo o seleziona una delle opzioni rapide sopra.")
-    elif not OPENAI_API_KEY:
-        st.error("Assicurati di aver configurato OPENAI_API_KEY nei Secrets di Streamlit.")
+    elif not GROQ_API_KEY:
+        st.error("Assicurati di aver configurato GROQ_API_KEY nei Secrets di Streamlit.")
     else:
         with st.spinner("L'IA sta elaborando l'analisi quantitativa dei match..."):
-            result = run_ai_bet_analysis(user_input, OPENAI_API_KEY)
+            result = run_ai_bet_analysis(user_input, GROQ_API_KEY)
             st.markdown(result)
             
