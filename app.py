@@ -1,6 +1,5 @@
 import streamlit as st
-import requests
-import json
+from google import genai
 
 st.set_page_config(page_title="Bet-Pro | Assistente IA 100%", page_icon="📊", layout="centered")
 
@@ -11,18 +10,20 @@ if "prompt_text" not in st.session_state:
 
 
 def run_ai_bet_analysis(user_query: str, api_key: str) -> str:
-    """Invia il prompt a Gemini tramite la REST API v1beta."""
+    """Utilizza il client nativo google-genai per comunicare con l'IA."""
     if not api_key:
         return "❌ Errore: GEMINI_API_KEY non presente nei Secrets di Streamlit."
 
-    cleaned_key = api_key.strip()
-
-    prompt = f"""Sei un analista quantitativo e statistico specializzato in scommesse sportive.
+    try:
+        # Inizializza il client con la chiave dei secrets
+        client = genai.Client(api_key=api_key.strip())
+        
+        prompt = f"""Sei un analista quantitativo e statistico specializzato in scommesse sportive.
 Richiesta/Palinsesto utente:
 "{user_query}"
 
 Istruzioni:
-1. Analizza i match indicati ed elabora i pronostici.
+1. Analizza i match indicati ed elabora i pronostici probabilistici.
 2. Per OGNI partita individuata, fornisci l'analisi strutturata in Markdown:
 
 ### [Squadra Casa] vs [Squadra Ospite] ([Competizione])
@@ -35,34 +36,22 @@ Istruzioni:
 
 Mantieni un tono analitico, diretto e privo di fronzoli."""
 
-    payload = {
-        "contents": [
-            {
-                "parts": [
-                    {"text": prompt}
-                ]
-            }
-        ]
-    }
-    headers = {"Content-Type": "application/json"}
+        # Modelli principali supportati dall'SDK nativo
+        for model_name in ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]:
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt
+                )
+                if response and response.text:
+                    return response.text
+            except Exception:
+                continue
 
-    # Modelli attivi accertati da provare in sequenza
-    models_to_try = ["gemini-1.5-flash", "gemini-2.0-flash-exp", "gemini-1.5-pro"]
-    logs = []
+        return "❌ Nessun modello ha risposto con successo. Verifica i permessi della chiave API."
 
-    for model in models_to_try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={cleaned_key}"
-        try:
-            res = requests.post(url, headers=headers, json=payload, timeout=20)
-            if res.status_code == 200:
-                data = res.json()
-                return data["candidates"][0]["content"]["parts"][0]["text"]
-            else:
-                logs.append(f"• Model '{model}': HTTP {res.status_code} - {res.text}")
-        except Exception as e:
-            logs.append(f"• Model '{model}': Errore eccezione {e}")
-
-    return "❌ **Errore di comunicazione con l'API Google:**\n\n" + "\n".join(logs)
+    except Exception as e:
+        return f"❌ Errore durante l'elaborazione dell'IA: {e}"
 
 
 # ---------------- INTERFACCIA STREAMLIT ----------------
@@ -105,3 +94,4 @@ if st.button("Elabora Esiti con l'IA", type="primary", use_container_width=True)
         with st.spinner("L'IA sta elaborando l'analisi quantitativa dei match..."):
             result = run_ai_bet_analysis(user_input, GEMINI_API_KEY)
             st.markdown(result)
+            
