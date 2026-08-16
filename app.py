@@ -10,12 +10,11 @@ if "prompt_text" not in st.session_state:
 
 
 def run_ai_bet_analysis(user_query: str, api_key: str) -> str:
-    """Utilizza il client nativo google-genai per comunicare con l'IA."""
+    """Utilizza il client nativo google-genai con i nomi di modello ufficiali."""
     if not api_key:
         return "❌ Errore: GEMINI_API_KEY non presente nei Secrets di Streamlit."
 
     try:
-        # Inizializza il client con la chiave dei secrets
         client = genai.Client(api_key=api_key.strip())
         
         prompt = f"""Sei un analista quantitativo e statistico specializzato in scommesse sportive.
@@ -36,11 +35,11 @@ Istruzioni:
 
 Mantieni un tono analitico, diretto e privo di fronzoli."""
 
-        # Modelli principali supportati dall'SDK nativo
-        for model_name in ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]:
+        # Utilizziamo i nomi di modello stabili per l'SDK
+        for model_id in ["gemini-2.0-flash", "gemini-1.5-flash"]:
             try:
                 response = client.models.generate_content(
-                    model=model_name,
+                    model=model_id,
                     contents=prompt
                 )
                 if response and response.text:
@@ -48,10 +47,10 @@ Mantieni un tono analitico, diretto e privo di fronzoli."""
             except Exception:
                 continue
 
-        return "❌ Nessun modello ha risposto con successo. Verifica i permessi della chiave API."
+        return "❌ Nessun modello ha risposto. Verifica la validità della chiave nei Secrets."
 
     except Exception as e:
-        return f"❌ Errore durante l'elaborazione dell'IA: {e}"
+        return f"❌ Errore di chiamata API: {e}"
 
 
 # ---------------- INTERFACCIA STREAMLIT ----------------
@@ -94,4 +93,3 @@ if st.button("Elabora Esiti con l'IA", type="primary", use_container_width=True)
         with st.spinner("L'IA sta elaborando l'analisi quantitativa dei match..."):
             result = run_ai_bet_analysis(user_input, GEMINI_API_KEY)
             st.markdown(result)
-            
