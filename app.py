@@ -17,8 +17,12 @@ def run_ai_bet_analysis(user_query: str, api_key: str) -> str:
     try:
         client = Groq(api_key=api_key.strip())
 
-        system_prompt = """Sei un analista quantitativo e bookmaker professionista, specializzato in scommesse sportive. 
-Hai una conoscenza enciclopedica del calcio mondiale, dei regolamenti dei tornei (distinguendo rigorosamente tra Coppe a eliminazione diretta/turni preliminari e campionati a girone all'italiana) e delle dinamiche di palinsesto."""
+        system_prompt = (
+            "Sei un analista quantitativo e bookmaker professionista, specializzato in scommesse sportive. "
+            "Hai una conoscenza enciclopedica del calcio mondiale, dei regolamenti dei tornei (distinguendo "
+            "rigorosamente tra Coppe a eliminazione diretta/turni preliminari e campionati a girone all'italiana) "
+            "e delle dinamiche di palinsesto."
+        )
         
         user_prompt = f"""Richiesta o palinsesto fornito dall'utente:
 "{user_query}"
@@ -44,8 +48,8 @@ Mantieni un tono analitico, rigoroso e privo di ambiguità."""
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
-            temperature=0.2  # Temperatura bassa per ridurre al minimo le allucinazioni e massimizzare la precisione dei dati
-        ]
+            temperature=0.2
+        )
 
         return response.choices[0].message.content
 
@@ -93,3 +97,4 @@ if st.button("Elabora Esiti con l'IA", type="primary", use_container_width=True)
         with st.spinner("L'IA sta elaborando l'analisi quantitativa e strutturale dei match..."):
             result = run_ai_bet_analysis(user_input, GROQ_API_KEY)
             st.markdown(result)
+
