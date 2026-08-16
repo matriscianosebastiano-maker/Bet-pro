@@ -12,10 +12,9 @@ if "analysis_result" not in st.session_state:
 
 
 def fetch_live_fixtures():
-    """Recupera le partite del giorno tramite API sportive pubbliche, 
-    verificando lo stato e scartando i match già iniziati o conclusi."""
+    """Recupera le partite del giorno e filtra escludendo solo quelle terminate o cancellate,
+    mantenendo attive quelle in corso (live) e da disputare."""
     try:
-        # Utilizzo di un endpoint pubblico affidabile per il palinsesto calcistico giornaliero
         today_str = datetime.now().strftime("%Y-%m-%d")
         url = f"https://www.thesportsdb.com/api/v1/json/3/eventsday.php?d={today_str}&s=Soccer"
         
@@ -35,33 +34,28 @@ def fetch_live_fixtures():
             return None, "Nessuna partita trovata per la data odierna."
             
         valid_matches = []
-        current_time = datetime.now()
         
         for ev in events:
             home = ev.get("strHomeTeam", "")
             away = ev.get("strAwayTeam", "")
             league = ev.get("strLeague", "")
-            time_str = ev.get("strTime", "") # Formato es: 20:00:00
-            status = ev.get("strStatus", "") # Stato del match (es. Match Finished, Not Started, ecc.)
+            time_str = ev.get("strTime", "")
+            status = ev.get("strStatus", "")
             
-            # Filtro temporale rigoroso: se la partita è già conclusa o in corso, la scartiamo
             lower_status = status.lower()
-            if any(term in lower_status for term in ['ft', 'finished', 'closed', 'postponed', 'cancelled', '1h', '2h', 'ht', 'live']):
+            
+            # FILTRO CORRETTO: Scartiamo SOLO match finiti, posticipati o cancellati. 
+            # Le partite in corso (Live, 1H, 2H, HT) e quelle future vengono ora mantenute.
+            finished_terms = ['ft', 'finished', 'closed', 'postponed', 'cancelled', 'aet', 'pen']
+            if any(term in lower_status for term in finished_terms):
                 continue
-                
-            # Controllo orario se disponibile
-            if time_str:
-                try:
-                    match_time_obj = datetime.strptime(time_str[:5], "%H:%M")
-                    # Confronto orario odierno (opzionale ma utile)
-                except ValueError:
-                    pass
 
             if home and away:
-                valid_matches.append(f"{home} vs {away} ({league}) - Inizio previsto ore {time_str[:5] if time_str else 'Da definire'}")
+                status_label = f" [LIVE / In corso]" if any(l in lower_status for l in ['live', '1h', '2h', 'ht']) else f" [Ore {time_str[:5] if time_str else 'Da definire'}]"
+                valid_matches.append(f"{home} vs {away} ({league}){status_label}")
 
         if not valid_matches:
-            return None, "Tutte le partite odierne sono già iniziate o concluse."
+            return None, "Nessun match disponibile o in corso al momento."
 
         return "\n".join(valid_matches), None
 
@@ -80,11 +74,10 @@ def run_ai_analysis(match_data: str, api_key: str) -> str:
         system_prompt = (
             "Sei un analista quantitativo e bookmaker professionista, specializzato in scommesse sportive. "
             "REGINA ASSOLUTA DEI PRONOSTICI: non devi MAI usare etichette o categorie vuote (come 'Esito 1X2' o 'Under/Over'). "
-            "Devi indicare SEMPRE il pronostico concreto e specifico (es. Segno 1, Segno X, Segno 2, Gol, NoGol, Under 2.5, Over 2.5, ecc.). "
-            "REGOLA TEMPORALE: Considera esclusivamente match futuri non ancora iniziati."
+            "Devi indicare SEMPRE il pronostico concreto e specifico (es. Segno 1, Segno X, Segno 2, Gol, NoGol, Under 2.5, Over 2.5, ecc.)."
         )
         
-        user_prompt = f"""Ecco il palinsesto ufficiale validato per oggi:
+        user_prompt = f"""Ecco il palinsesto ufficiale validato per oggi (inclusi match in corso e futuri):
 -----------------
 {match_data}
 -----------------
@@ -119,12 +112,12 @@ Mantieni un tono rigoroso, professionale e privo di etichette vuote."""
 # ---------------- INTERFACCIA STREAMLIT ----------------
 
 st.title("📊 Bet-Pro | Live Quant Analysis")
-st.caption("Sincronizzazione via API sportive con filtro orario e verifica stato match.")
+st.caption("Sincronizzazione via API con supporto per match live e in programma.")
 
 st.markdown("---")
 
 st.subheader("🎯 Gestione Palinsesto Live")
-st.write("Premi il pulsante per interrogare i server sportivi in tempo reale, verificare gli orari ed eseguire l'analisi quantitativa.")
+st.write("Premi il pulsante per interrogare i server sportivi, includendo i match in corso e quelli da disputare.")
 
 if st.button("🚀 Sincronizza Palinsesto e Avvia Analisi", type="primary", use_container_width=True):
     with st.spinner("Interrogazione feed sportivi in corso..."):
