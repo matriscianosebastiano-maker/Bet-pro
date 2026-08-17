@@ -17,18 +17,13 @@ EMAIL_USER = st.secrets.get("EMAIL_USER", "")
 EMAIL_PASS = st.secrets.get("EMAIL_PASS", "")
 HISTORY_FILE = "bet_history.csv"
 
-# --- LOGICA DI FETCHING INTELLIGENTE (ELITE + GLOBALE) ---
+# --- LOGICA DI FETCHING INTELLIGENTE ---
 def fetch_fixtures_and_odds(api_key: str):
     if not api_key: return None, "❌ Errore: API_FOOTBALL_KEY non configurata."
     try:
         italy_tz = timezone(timedelta(hours=2))
         oggi_dt = datetime.now(italy_tz)
-        
-        dates_to_fetch = [
-            oggi_dt.strftime("%Y-%m-%d"),
-            (oggi_dt + timedelta(days=1)).strftime("%Y-%m-%d")
-        ]
-        
+        dates_to_fetch = [oggi_dt.strftime("%Y-%m-%d"), (oggi_dt + timedelta(days=1)).strftime("%Y-%m-%d")]
         headers = {"x-rapidapi-host": "v3.football.api-sports.io", "x-rapidapi-key": api_key}
         
         all_fixtures = []
@@ -43,7 +38,6 @@ def fetch_fixtures_and_odds(api_key: str):
             
             if resp_f.status_code == 200:
                 all_fixtures.extend(resp_f.json().get("response", []))
-                
             if resp_o.status_code == 200:
                 odds_raw = resp_o.json().get("response", [])
                 for o in odds_raw:
@@ -56,14 +50,11 @@ def fetch_fixtures_and_odds(api_key: str):
 
         elite_matches = []
         global_matches = []
-        
         elite_keywords = ["serie a", "serie b", "coppa italia", "supercoppa", "champions league", "europa league", "conference league", "premier league", "la liga", "bundesliga", "ligue 1"]
 
         for m in all_fixtures:
             f = m['fixture']
-            if f['status']['short'] not in ['NS', 'TBD']:
-                continue
-                
+            if f['status']['short'] not in ['NS', 'TBD']: continue
             match_timestamp = f.get('timestamp', 0)
             match_time_str = datetime.fromtimestamp(match_timestamp, tz=timezone.utc).astimezone(italy_tz).strftime('%d/%m %H:%M') if match_timestamp > 0 else "N/D"
             
@@ -73,28 +64,19 @@ def fetch_fixtures_and_odds(api_key: str):
             country = m['league']['country']
             f_id = f['id']
             
-            odds_str = odds_dict.get(f_id, "Quote in aggiornamento (Stima Quantistica ELO)")
+            odds_str = odds_dict.get(f_id, "Quote in aggiornamento")
             match_line = f"[{match_time_str}] {home} vs {away} | L: {league_name} ({country}) | Quote: {odds_str}"
             
             is_elite = any(kw in league_name.lower() for kw in elite_keywords) or country.lower() in ["italy", "england", "spain", "germany", "france", "europe"]
             
-            if is_elite:
-                elite_matches.append(match_line)
-            else:
-                global_matches.append(match_line)
-        
-        combined_data = "--- PALINSESTO ELITE (ITALIA & EUROPA / COPPE) ---\n"
-        if elite_matches:
-            combined_data += "\n".join(elite_matches)
-        else:
-            combined_data += "Nessun match elite diretto trovato nelle prossime 48h."
+            if is_elite: elite_matches.append(match_line)
+            else: global_matches.append(match_line)
             
-        combined_data += "\n\n--- PALINSESTO GLOBALE ---\n" + "\n".join(global_matches[:60])
-        
+        combined_data = "--- PALINSESTO ELITE ---\n" + ("\n".join(elite_matches) if elite_matches else "Nessun match elite.") + "\n\n--- PALINSESTO GLOBALE ---\n" + "\n".join(global_matches[:60])
         return combined_data, None
     except Exception as e: return None, str(e)
 
-# --- LOGICA DI BACKTESTING E REPORT ---
+# --- LOGICA DI SALVATAGGIO E REPORT ---
 def save_bet_to_history(data_dict):
     df = pd.DataFrame([data_dict])
     if os.path.exists(HISTORY_FILE): df.to_csv(HISTORY_FILE, mode='a', header=False, index=False)
@@ -117,53 +99,50 @@ def send_weekly_report():
         return "Report inviato con successo."
     except Exception as e: return f"Errore invio: {e}"
 
-# --- MOTORE QUANTISTICO ---
+# --- MOTORE QUANTISTICO (CON FALLBACK AUTOMATICO) ---
 def run_quant_engine(match_data: str, api_key: str) -> str:
     client = Groq(api_key=api_key.strip())
+    # Lista di modelli per evitare dismissioni improvvise
+    models_to_try = ["llama-3.3-70b-versatile", "llama-3.1-70b-versatile", "mixtral-8x7b-32768"]
+    
     system_prompt = (
-        "Sei il 'Quant Engine Alpha', un'IA per l'analisi sportiva istituzionale. "
-        "Il tuo compito è generare DUE distinte strategie basate rigorosamente sui dati forniti.\n\n"
-        "REQUISITO TASSATIVO PER OGNI SINGOLO EVENTO:\n"
-        "Per OGNUNA delle 5 partite di entrambe le strategie devi indicare esplicitamente:\n"
-        "- **Match e Orario**\n"
-        "- **Classe di Esito (Pronostico preciso):** (es. Segno 1, X2, Over 1.5, Under 3.5, Goal, Combo 1X + Under 3.5)\n"
-        "- **Quota Ufficiale o Stimata:** [Valore]\n"
-        "- **Ragionamento Matematico / Statistico:** (Breve motivazione basata su Poisson, ELO o asimmetria tecnica)\n\n"
-        "STRUTTURA DELL'OUTPUT:\n"
-        "1. **STRATEGIA 1: Schedina Global Daily 50€** (5 eventi dal palinsesto globale, target quota totale 10-15x).\n"
-        "2. **STRATEGIA 2: Specchietto Dedicato Elite (Italiane & Principali Europee / Coppe)** (Esattamente 5 eventi focalizzati su Serie A, Coppa Italia, coppe europee e top club. Se le quote non sono caricate, stimale rigorosamente).\n\n"
-        "Includi per entrambe le sezioni: la **Quota Totale Combinata**, il **Confidence Score (0-100%)** e il **Protocollo di Rischio** (Toro/Orso con puntata consigliata di 3€ o 5€)."
+        "Sei il 'Quant Engine Alpha', IA per analisi sportiva istituzionale. "
+        "REQUISITO: Indipendentemente dal modello, fornisci SEMPRE per 5 eventi: Match, Classe Esito, Quota, Motivazione Statistica."
+        "STRUTTURA: 1. Strategia Global Daily, 2. Strategia Elite. Concludi con Confidence Score e Protocollo di Rischio."
     )
-    
-    # Sicurezza: tronchiamo i dati a 3500 caratteri per evitare errori di payload (BadRequest)
-    safe_match_data = match_data[:3500] if match_data else "Nessun dato disponibile."
-    user_prompt = f"Ecco i dati:\n{safe_match_data}\nGenera le due strategie con le classi di esito complete."
-    
-    try:
-        response = client.chat.completions.create(
-            model="llama3-70b-8192",
-            messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
-            temperature=0.1
-        )
-        return response.choices[0].message.content
-    except Exception as e:
-        return f"❌ Errore durante l'inferenza del Quant Engine: {str(e)}"
+    safe_match_data = match_data[:3500] if match_data else "Nessun dato."
+    user_prompt = f"Ecco i dati:\n{safe_match_data}\nGenera due strategie con esiti completi."
+
+    for model_name in models_to_try:
+        try:
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
+                temperature=0.1
+            )
+            return response.choices[0].message.content
+        except Exception:
+            continue # Passa al prossimo modello se fallisce
+            
+    return "❌ Errore critico: Nessuno dei modelli AI è attualmente disponibile."
 
 # --- UI STREAMLIT ---
 st.title("⚙️ Bet-Pro | Quant Engine Alpha")
 
 if st.button("🚀 Inizializza Motore Quantistico", type="primary"):
-    with st.spinner("Estrazione Palinsesto Elite & Globale (Oggi & Domani)..."):
+    with st.spinner("Estrazione e Analisi Quantistica in corso..."):
         data, err = fetch_fixtures_and_odds(API_FOOTBALL_KEY)
         if err: st.error(err)
         else:
             result = run_quant_engine(data, GROQ_API_KEY)
             st.session_state["analysis_result"] = result
-            save_bet_to_history({"date": datetime.now(), "result": result})
+            if "❌ Errore" not in result:
+                save_bet_to_history({"date": datetime.now(), "result": result})
 
 if st.session_state.get("analysis_result"):
     st.markdown(st.session_state["analysis_result"])
 
+# Sidebar con funzioni avanzate
 st.sidebar.markdown("---")
 if st.sidebar.button("📧 Invia Report Settimanale"):
     st.sidebar.info(send_weekly_report())
