@@ -17,59 +17,79 @@ EMAIL_USER = st.secrets.get("EMAIL_USER", "")
 EMAIL_PASS = st.secrets.get("EMAIL_PASS", "")
 HISTORY_FILE = "bet_history.csv"
 
-# --- LOGICA DI FETCHING ROBUSTA (PROSSIME 20 PARTITE GLOBALI) ---
+# --- LOGICA DI FETCHING A CASCATA (ZERO ERRORI / ZERO PALINSESTO VUOTO) ---
 def fetch_fixtures_and_odds(api_key: str):
     if not api_key: 
         return None, "❌ Errore: API_FOOTBALL_KEY non configurata nei Secrets."
     try:
         italy_tz = timezone(timedelta(hours=2))
+        oggi_dt = datetime.now(italy_tz)
+        
+        date_from = oggi_dt.strftime("%Y-%m-%d")
+        date_to = (oggi_dt + timedelta(days=7)).strftime("%Y-%m-%d")
+        
         headers = {"x-rapidapi-host": "v3.football.api-sports.io", "x-rapidapi-key": api_key.strip()}
+        all_fixtures = []
         
-        # Endpoint ottimizzato per prelevare sempre i prossimi match disponibili senza filtri di data rigidi
-        url_f = "https://v3.football.api-sports.io/fixtures?next=25"
-        
-        resp_f = requests.get(url_f, headers=headers, timeout=10)
-        if resp_f.status_code != 200:
-            return None, f"❌ Errore API (Status {resp_f.status_code}): {resp_f.text}"
+        # TENTATIVO 1: Intervallo date (Oggi -> +7 giorni)
+        url_range = f"https://v3.football.api-sports.io/fixtures?from={date_from}&to={date_to}"
+        try:
+            resp = requests.get(url_range, headers=headers, timeout=10)
+            if resp.status_code == 200:
+                all_fixtures = resp.json().get("response", [])
+        except Exception:
+            pass
             
-        all_fixtures = resp_f.json().get("response", [])
-        
+        # TENTATIVO 2: Se vuoto, usa l'endpoint ?next=50 per forzare il recupero dei prossimi match
         if not all_fixtures:
-            return None, "⚠️ Nessuna partita imminente trovata nel palinsesto."
+            url_next = "https://v3.football.api-sports.io/fixtures?next=50"
+            try:
+                resp = requests.get(url_next, headers=headers, timeout=10)
+                if resp.status_code == 200:
+                    all_fixtures = resp.json().get("response", [])
+            except Exception:
+                pass
+
+        if not all_fixtures:
+            return None, "⚠️ Impossibile recuperare partite dal palinsesto. Verifica la chiave API o la quota disponibile."
 
         elite_matches = []
         global_matches = []
         elite_keywords = ["serie a", "serie b", "coppa italia", "supercoppa", "champions league", "europa league", "conference league", "premier league", "la liga", "bundesliga", "ligue 1"]
 
-        for m in all_fixtures:
+        # Filtro flessibile: se ci sono match con stato 'NS' o 'TBD' li usiamo, altrimenti prendiamo tutto ciò che arriva per evitare blocchi
+        filtered_fixtures = [m for m in all_fixtures if m.get('fixture', {}).get('status', {}).get('short') in ['NS', 'TBD']]
+        if not filtered_fixtures:
+            filtered_fixtures = all_fixtures  # Fallback di sicurezza estrema
+
+        for m in filtered_fixtures:
             f = m['fixture']
-            if f['status']['short'] not in ['NS', 'TBD']:
-                continue
-                
             match_timestamp = f.get('timestamp', 0)
             match_time_str = datetime.fromtimestamp(match_timestamp, tz=timezone.utc).astimezone(italy_tz).strftime('%d/%m %H:%M') if match_timestamp > 0 else "N/D"
             
-            home = m['teams']['home']['name']
-            away = m['teams']['away']['name']
-            league_name = m['league']['name']
-            country = m['league']['country']
-            f_id = f['id']
+            home = m.get('teams', {}).get('home', {}).get('name', 'Casa')
+            away = m.get('teams', {}).get('away', {}).get('name', 'Ospite')
+            league_data = m.get('league', {})
+            league_name = league_data.get('name', 'Campionato')
+            country = league_data.get('country', 'Internazionale')
+            f_id = f.get('id')
             
-            # Recupero quote associate se disponibili
+            # Recupero quote associate (opzionale con fallback rapido)
             odds_str = "Quote da stimare tramite modelli ELO/Poisson"
-            try:
-                url_o = f"https://v3.football.api-sports.io/odds?fixture={f_id}&bookmaker=8"
-                resp_o = requests.get(url_o, headers=headers, timeout=5)
-                if resp_o.status_code == 200:
-                    odds_raw = resp_o.json().get("response", [])
-                    if odds_raw:
-                        bets = odds_raw[0].get("bookmakers", [{}])[0].get("bets", [])
-                        winner = next((b for b in bets if b.get("id") == 1), None)
-                        if winner and len(winner.get("values", [])) >= 3:
-                            v = winner["values"]
-                            odds_str = f"1: {v[0]['odd']} | X: {v[1]['odd']} | 2: {v[2]['odd']}"
-            except Exception:
-                pass
+            if f_id:
+                try:
+                    url_o = f"https://v3.football.api-sports.io/odds?fixture={f_id}&bookmaker=8"
+                    resp_o = requests.get(url_o, headers=headers, timeout=3)
+                    if resp_o.status_code == 200:
+                        odds_raw = resp_o.json().get("response", [])
+                        if odds_raw:
+                            bets = odds_raw[0].get("bookmakers", [{}])[0].get("bets", [])
+                            winner = next((b for b in bets if b.get("id") == 1), None)
+                            if winner and len(winner.get("values", [])) >= 3:
+                                v = winner["values"]
+                                odds_str = f"1: {v[0]['odd']} | X: {v[1]['odd']} | 2: {v[2]['odd']}"
+                except Exception:
+                    pass
 
             match_line = f"[{match_time_str}] {home} vs {away} | L: {league_name} ({country}) | Quote: {odds_str}"
             
@@ -81,12 +101,12 @@ def fetch_fixtures_and_odds(api_key: str):
                 global_matches.append(match_line)
         
         combined_data = "--- PALINSESTO ELITE (ITALIA & EUROPA / COPPE) ---\n"
-        combined_data += "\n".join(elite_matches) if elite_matches else "Nessun match elite immediato, utilizza la selezione globale."
-        combined_data += "\n\n--- PALINSESTO GLOBALE ---\n" + "\n".join(global_matches)
+        combined_data += "\n".join(elite_matches) if elite_matches else "Nessun match elite diretto nel periodo, utilizza la selezione globale."
+        combined_data += "\n\n--- PALINSESTO GLOBALE ---\n" + "\n".join(global_matches[:70])
         
         return combined_data, None
     except Exception as e: 
-        return None, f"❌ Errore durante il recupero dei dati: {str(e)}"
+        return None, f"❌ Errore critico nel fetching: {str(e)}"
 
 # --- LOGICA DI REPORT E STORICO ---
 def save_bet_to_history(data_dict):
@@ -114,7 +134,7 @@ def send_weekly_report():
 # --- MOTORE QUANTISTICO CON FALLBACK MODELLI ---
 def run_quant_engine(match_data: str, api_key: str) -> str:
     if not api_key:
-        return "❌ ERRORE: GROQ_API_KEY non presente."
+        return "❌ ERRORE: GROQ_API_KEY non presente nei Secrets."
         
     client = Groq(api_key=api_key.strip())
     
