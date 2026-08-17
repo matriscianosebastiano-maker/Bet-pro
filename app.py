@@ -99,13 +99,12 @@ def send_weekly_report():
         return "Report inviato con successo."
     except Exception as e: return f"Errore invio: {e}"
 
-# --- MOTORE QUANTISTICO DIAGNOSTICO ---
+# --- MOTORE QUANTISTICO CORRETTO ---
 def run_quant_engine(match_data: str, api_key: str) -> str:
     if not api_key:
         return "❌ ERRORE: La tua GROQ_API_KEY è vuota nei secrets di Streamlit."
     
     client = Groq(api_key=api_key.strip())
-    # Proviamo i modelli più stabili e recenti di Groq
     models = ["llama-3.3-70b-versatile", "llama-3.1-70b-versatile"]
     
     system_prompt = (
@@ -116,6 +115,7 @@ def run_quant_engine(match_data: str, api_key: str) -> str:
     safe_match_data = match_data[:3500] if match_data else "Nessun dato."
     user_prompt = f"Ecco i dati:\n{safe_match_data}\nGenera due strategie con esiti completi."
 
+    last_error = "Errore sconosciuto"
     for model in models:
         try:
             response = client.chat.completions.create(
@@ -125,10 +125,10 @@ def run_quant_engine(match_data: str, api_key: str) -> str:
             )
             return response.choices[0].message.content
         except Exception as e:
-            # Continuiamo a provare il prossimo modello
+            last_error = str(e)
             continue
             
-    return f"❌ ERRORE CRITICO GROQ: Tutti i tentativi falliti. Ultimo errore: {str(e)}"
+    return f"❌ ERRORE CRITICO GROQ: Tutti i tentativi falliti. Ultimo errore: {last_error}"
 
 # --- UI STREAMLIT ---
 st.title("⚙️ Bet-Pro | Quant Engine Alpha")
