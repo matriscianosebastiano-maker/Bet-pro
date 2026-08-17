@@ -57,7 +57,6 @@ def fetch_fixtures_and_odds(api_key: str):
         elite_matches = []
         global_matches = []
         
-        # Competizioni considerate Elite (Italia & Europa)
         elite_keywords = ["serie a", "serie b", "coppa italia", "supercoppa", "champions league", "europa league", "conference league", "premier league", "la liga", "bundesliga", "ligue 1"]
 
         for m in all_fixtures:
@@ -77,7 +76,6 @@ def fetch_fixtures_and_odds(api_key: str):
             odds_str = odds_dict.get(f_id, "Quote in aggiornamento (Stima Quantistica ELO)")
             match_line = f"[{match_time_str}] {home} vs {away} | L: {league_name} ({country}) | Quote: {odds_str}"
             
-            # Controllo se è un match Elite (italiano o top europeo)
             is_elite = any(kw in league_name.lower() for kw in elite_keywords) or country.lower() in ["italy", "england", "spain", "germany", "france", "europe"]
             
             if is_elite:
@@ -85,12 +83,11 @@ def fetch_fixtures_and_odds(api_key: str):
             else:
                 global_matches.append(match_line)
         
-        # Formattiamo i dati da passare all'IA in modo strutturato
         combined_data = "--- PALINSESTO ELITE (ITALIA & EUROPA / COPPE) ---\n"
         if elite_matches:
             combined_data += "\n".join(elite_matches)
         else:
-            combined_data += "Nessun match elite diretto trovato nelle prossime 48h, includere club di massima fascia disponibili."
+            combined_data += "Nessun match elite diretto trovato nelle prossime 48h."
             
         combined_data += "\n\n--- PALINSESTO GLOBALE ---\n" + "\n".join(global_matches[:80])
         
@@ -125,15 +122,19 @@ def run_quant_engine(match_data: str, api_key: str) -> str:
     client = Groq(api_key=api_key.strip())
     system_prompt = (
         "Sei il 'Quant Engine Alpha', un'IA per l'analisi sportiva istituzionale. "
-        "Il tuo compito è generare DUE distinte strategie basate rigorosamente sui dati forniti:\n\n"
-        "1. **STRATEGIA 1: Schedina Global Daily 50€**\n"
-        "- 5 eventi selezionati dall'intero palinsesto mondiale con il miglior rapporto probabilità/valore (quote medie 1.50-1.80, target quota totale 10-15x).\n\n"
-        "2. **STRATEGIA 2: Specchietto Dedicato Elite (Italiane & Principali Europee / Coppe)**\n"
-        "- Una combinazione separata di esattamente 5 eventi focalizzata esclusivamente su squadre italiane (Serie A, Coppa Italia, Supercoppa) e top club europei presenti nel blocco Elite dei dati.\n"
-        "- Anche se per alcune partite (es. preliminari di coppa) le quote ufficiali non sono ancora caricate e vedi 'Stima Quantistica', applica i modelli statistici (Poisson/ELO) per definire l'esito più logico e la quota stimata.\n\n"
-        "Includi per entrambe le sezioni: i 5 match con scommessa consigliata, data/orario, quota stimata, quota totale della combinata, confidenza (0-100%) e protocollo di rischio (Toro/Orso con stake 3€ o 5€)."
+        "Il tuo compito è generare DUE distinte strategie basate rigorosamente sui dati forniti.\n\n"
+        "REQUISITO TASSATIVO PER OGNI SINGOLO EVENTO:\n"
+        "Non devi mai limitarti a dire la quota o le squadre. Per OGNUNA delle 5 partite di entrambe le strategie devi indicare esplicitamente:\n"
+        "- **Match e Orario**\n"
+        "- **Classe di Esito (Pronostico preciso):** (es. Segno 1, X2, Over 1.5, Under 3.5, Goal, Combo 1X + Under 3.5)\n"
+        "- **Quota Ufficiale o Stimata:** [Valore]\n"
+        "- **Ragionamento Matematico / Statistico:** (Breve motivazione basata su Poisson, ELO o asimmetria tecnica)\n\n"
+        "STRUTTURA DELL'OUTPUT:\n"
+        "1. **STRATEGIA 1: Schedina Global Daily 50€** (5 eventi dal palinsesto globale, target quota totale 10-15x).\n"
+        "2. **STRATEGIA 2: Specchietto Dedicato Elite (Italiane & Principali Europee / Coppe)** (Esattamente 5 eventi focalizzati su Serie A, Coppa Italia, coppe europee e top club. Se le quote non sono ancora caricate, stimale rigorosamente con i modelli di calcolo).\n\n"
+        "Includi per entrambe le sezioni: la **Quota Totale Combinata**, il **Confidence Score (0-100%)** e il **Protocollo di Rischio** (Toro/Orso con puntata consigliata di 3€ o 5€)."
     )
-    user_prompt = f"Ecco i dati divisi per sezioni (Oggi e Domani):\n{match_data}\nGenera le due strategie."
+    user_prompt = f"Ecco i dati divisi per sezioni (Oggi e Domani):\n{match_data}\nGenera le due strategie con le classi di esito complete e dettagliate."
     
     response = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
