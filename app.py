@@ -10,18 +10,15 @@ import os
 
 st.set_page_config(page_title="Bet-Pro | Quant Engine Alpha", page_icon="⚙️", layout="wide")
 
-# --- CONFIGURAZIONE SECRETS ---
+# --- CONFIGURAZIONE ---
 GROQ_API_KEY = st.secrets.get("GROQ_API_KEY", "")
 API_FOOTBALL_KEY = st.secrets.get("API_FOOTBALL_KEY", "")
 EMAIL_USER = st.secrets.get("EMAIL_USER", "")
 EMAIL_PASS = st.secrets.get("EMAIL_PASS", "")
-
 HISTORY_FILE = "bet_history.csv"
 
-# --- FUNZIONI DI SISTEMA ---
-
+# --- LOGICA DI FETCHING ---
 def fetch_fixtures_and_odds(api_key: str):
-    """Recupera palinsesto e quote (Bet365)."""
     if not api_key: return None, "❌ Errore: API_FOOTBALL_KEY non configurata."
     try:
         italy_tz = timezone(timedelta(hours=2))
@@ -44,49 +41,51 @@ def fetch_fixtures_and_odds(api_key: str):
                 v = winner["values"]
                 odds_dict[f_id] = f"1: {v[0]['odd']} | X: {v[1]['odd']} | 2: {v[2]['odd']}"
 
-        match_list = [
-            f"{m['teams']['home']['name']} vs {m['teams']['away']['name']} | ID: {m['fixture']['id']} | Quote: {odds_dict.get(m['fixture']['id'], 'N/A')}"
-            for m in fixtures if m['fixture']['status']['short'] in ['NS', 'TBD'] and m['fixture']['id'] in odds_dict
-        ]
+        match_list = []
+        for m in fixtures:
+            f = m['fixture']
+            if f['status']['short'] in ['NS', 'TBD'] and f['id'] in odds_dict:
+                match_list.append(f"{m['teams']['home']['name']} vs {m['teams']['away']['name']} | L: {m['league']['name']} | Quote: {odds_dict[f['id']]}")
+        
         return "\n".join(match_list[:70]), None
     except Exception as e: return None, str(e)
 
+# --- LOGICA DI BACKTESTING E REPORT ---
 def save_bet_to_history(data_dict):
-    """Salva la giocata in CSV per il backtesting."""
     df = pd.DataFrame([data_dict])
-    if os.path.exists(HISTORY_FILE):
-        df.to_csv(HISTORY_FILE, mode='a', header=False, index=False)
-    else:
-        df.to_csv(HISTORY_FILE, mode='w', header=True, index=False)
+    if os.path.exists(HISTORY_FILE): df.to_csv(HISTORY_FILE, mode='a', header=False, index=False)
+    else: df.to_csv(HISTORY_FILE, mode='w', header=True, index=False)
 
 def send_weekly_report():
-    """Invia il report delle prestazioni via Email."""
     if not os.path.exists(HISTORY_FILE): return "Nessuno storico trovato."
     df = pd.read_csv(HISTORY_FILE)
-    report_text = df.to_html()
-    
     msg = MIMEMultipart()
     msg['From'] = EMAIL_USER
     msg['To'] = EMAIL_USER
     msg['Subject'] = "📈 Report Settimanale Bet-Pro Quant Engine"
-    msg.attach(MIMEText(f"Ecco il log delle attività:\n\n{report_text}", 'html'))
-    
+    msg.attach(MIMEText(f"Log attività:\n\n{df.to_html()}", 'html'))
     try:
         server = smtplib.SMTP('smtp.gmail.com', 587)
         server.starttls()
         server.login(EMAIL_USER, EMAIL_PASS)
         server.send_message(msg)
         server.quit()
-        return "Report inviato con successo a " + EMAIL_USER
+        return "Report inviato con successo."
     except Exception as e: return f"Errore invio: {e}"
 
+# --- MOTORE QUANTISTICO ---
 def run_quant_engine(match_data: str, api_key: str) -> str:
     client = Groq(api_key=api_key.strip())
     system_prompt = (
-        "Sei il 'Quant Engine Alpha'. Analizza le partite e crea una schedina da 5 eventi ad alta probabilità. "
-        "Output richiesto: Elenco puntato di 5 match, Quota Totale, Confidenza (0-100%), Stake consigliato (3€ o 5€)."
+        "Sei il 'Quant Engine Alpha', un'IA per l'analisi sportiva istituzionale. "
+        "IL TUO OBBLIGO: Fornire una schedina da 5 eventi ad alta probabilità.\n"
+        "STRUTTURA OBBLIGATORIA DEL REPORT:\n"
+        "1. ELITE FOCUS (Serie A, Coppa Italia, Premier, Liga, Bundesliga, Ligue 1): Analizza specificamente le squadre italiane e le top europee. Valuta la loro condizione in modo secco e tecnico.\n"
+        "2. SCHEDINA DAILY 50€: 5 eventi selezionati con quote medie 1.50-1.80 (Quota totale obiettivo 10-15x).\n"
+        "3. PROTOCOLLO RISCHIO: Valuta se il mercato è 'Toro' (punta 5€) o 'Orso' (punta 3€).\n"
+        "Sii sintetico, analitico e professionale."
     )
-    user_prompt = f"Analizza:\n{match_data}\nGenera la Schedina Daily 50€."
+    user_prompt = f"Analizza il palinsesto globale e genera la Strategia:\n{match_data}"
     
     response = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
@@ -95,18 +94,16 @@ def run_quant_engine(match_data: str, api_key: str) -> str:
     )
     return response.choices[0].message.content
 
-# --- INTERFACCIA ---
-
+# --- UI STREAMLIT ---
 st.title("⚙️ Bet-Pro | Quant Engine Alpha")
 
 if st.button("🚀 Inizializza Motore Quantistico"):
-    with st.spinner("Calcolo in corso..."):
+    with st.spinner("Analisi Elite & Globale in corso..."):
         data, err = fetch_fixtures_and_odds(API_FOOTBALL_KEY)
         if err: st.error(err)
         else:
             result = run_quant_engine(data, GROQ_API_KEY)
             st.session_state["analysis_result"] = result
-            # Salvataggio automatico (semplificato)
             save_bet_to_history({"date": datetime.now(), "result": result})
 
 if st.session_state.get("analysis_result"):
@@ -114,10 +111,9 @@ if st.session_state.get("analysis_result"):
 
 st.sidebar.markdown("---")
 if st.sidebar.button("📧 Invia Report Settimanale"):
-    status = send_weekly_report()
-    st.sidebar.success(status)
+    st.sidebar.info(send_weekly_report())
 
 if os.path.exists(HISTORY_FILE):
-    st.sidebar.subheader("📊 Storico (Backtesting)")
-    st.sidebar.dataframe(pd.read_csv(HISTORY_FILE).tail(5))
+    st.sidebar.subheader("📊 Storico Recente")
+    st.sidebar.dataframe(pd.read_csv(HISTORY_FILE).tail(3))
     
