@@ -1,23 +1,27 @@
 import streamlit as st
 import requests
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from groq import Groq
 
 st.set_page_config(page_title="Bet-Pro | Analisi Quantitativa Avanzata", page_icon="📈", layout="centered")
 
 GROQ_API_KEY = st.secrets.get("GROQ_API_KEY", "")
-API_FOOTBALL_KEY = st.secrets.get("API_FOOTBALL_KEY", "") # Aggiungi questa chiave nei secrets
+API_FOOTBALL_KEY = st.secrets.get("API_FOOTBALL_KEY", "")
 
 if "analysis_result" not in st.session_state:
     st.session_state["analysis_result"] = ""
 
 def fetch_global_fixtures(api_key: str):
-    """Recupera TUTTE le partite mondiali del giorno tramite API-Football e applica un filtro temporale assoluto."""
+    """Recupera TUTTE le partite mondiali del giorno adattandole al fuso orario italiano."""
     if not api_key:
         return None, "❌ Errore: API_FOOTBALL_KEY non configurata nei secrets."
 
     try:
-        today_str = datetime.now().strftime("%Y-%m-%d")
+        # Impostiamo esplicitamente il fuso orario italiano (UTC+2 per l'ora legale)
+        italy_tz = timezone(timedelta(hours=2))
+        oggi_italia = datetime.now(italy_tz)
+        today_str = oggi_italia.strftime("%Y-%m-%d")
+        
         url = "https://v3.football.api-sports.io/fixtures"
         querystring = {"date": today_str}
         
@@ -38,6 +42,7 @@ def fetch_global_fixtures(api_key: str):
             return None, "Nessuna partita in programma per oggi nel database mondiale."
             
         valid_matches = []
+        # Il timestamp UNIX è assoluto, universale per tutti
         current_timestamp = int(datetime.now().timestamp())
         
         for match in matches:
@@ -49,8 +54,7 @@ def fetch_global_fixtures(api_key: str):
             status_short = fixture.get("status", {}).get("short", "")
             
             # FILTRO LOGICO TEMPORALE: 
-            # Scarta matematicamente qualsiasi match il cui orario d'inizio è nel passato,
-            # oppure che ha uno stato diverso da "Not Started" (NS) o "Time to be Defined" (TBD).
+            # Scarta matematicamente qualsiasi match il cui orario d'inizio è nel passato
             if match_timestamp <= current_timestamp or status_short not in ["NS", "TBD"]:
                 continue
                 
@@ -59,10 +63,15 @@ def fetch_global_fixtures(api_key: str):
             league_name = league.get("name", "Competizione Sconosciuta")
             country = league.get("country", "Mondo")
             
-            # Formatta l'orario per il prompt
-            match_time = datetime.fromtimestamp(match_timestamp).strftime('%H:%M')
+            # Convertiamo il timestamp nel nostro orario locale (Italia)
+            match_dt_utc = datetime.fromtimestamp(match_timestamp, tz=timezone.utc)
+            match_dt_italy = match_dt_utc.astimezone(italy_tz)
             
-            valid_matches.append(f"[{match_time}] {home} vs {away} - {league_name} ({country})")
+            # Formattiamo orario e data corretta italiana
+            match_time = match_dt_italy.strftime('%H:%M')
+            match_date = match_dt_italy.strftime('%d/%m')
+            
+            valid_matches.append(f"[{match_date} - Ore {match_time}] {home} vs {away} - {league_name} ({country})")
             
         if not valid_matches:
             return None, "Tutte le partite del palinsesto odierno sono già iniziate o concluse."
@@ -91,7 +100,7 @@ def run_advanced_ai_analysis(match_data: str, api_key: str) -> str:
             "4. SCARTA I MATCH FINITI: Analizza solo match futuri. Se per errore ricevi un match già in corso, ignoralo."
         )
         
-        user_prompt = f"""Ecco il palinsesto mondiale completo dei match ANCORA DA GIOCARE oggi:
+        user_prompt = f"""Ecco il palinsesto mondiale completo dei match ANCORA DA GIOCARE:
 -----------------
 {match_data}
 -----------------
@@ -99,7 +108,7 @@ def run_advanced_ai_analysis(match_data: str, api_key: str) -> str:
 Istruzioni Operative:
 Per OGNI partita, esegui il tuo ragionamento logico-matematico e genera la seguente scheda in Markdown:
 
-### [Squadra Casa] vs [Squadra Ospite] ([Competizione, Nazione]) - Ore [Orario]
+### [Squadra Casa] vs [Squadra Ospite] ([Competizione, Nazione]) - Data/Ora [Orario]
 * **Analisi Dinamica e Motivazionale:** (Spiega il tuo ragionamento logico: c'è rischio turnover? È una coppa minore? Chi ha più 'fame' di punti?)
 * **Classi di Esito (Pronostici Matematici):**
   * **Copertura (Basso Rischio):** [Es. 1X e Under 3.5]
@@ -113,7 +122,7 @@ Per OGNI partita, esegui il tuo ragionamento logico-matematico e genera la segue
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
-            temperature=0.2 # Leggermente alzato per permettere un ragionamento logico più flessibile
+            temperature=0.2 
         )
         return response.choices[0].message.content
 
@@ -127,7 +136,7 @@ st.caption("Palinsesto globale filtrato al secondo + Analisi su Asimmetria Motiv
 st.markdown("---")
 
 if st.button("🚀 Estrai Palinsesto Globale e Avvia Calcolo Logico", type="primary", use_container_width=True):
-    with st.spinner("Sincronizzazione col database mondiale in corso (filtro orario attivo)..."):
+    with st.spinner("Sincronizzazione col database mondiale in corso (filtro orario e fuso italiano attivi)..."):
         raw_data, err = fetch_global_fixtures(API_FOOTBALL_KEY)
         
         if err or not raw_data:
