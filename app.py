@@ -89,7 +89,7 @@ def fetch_fixtures_and_odds(api_key: str):
         else:
             combined_data += "Nessun match elite diretto trovato nelle prossime 48h."
             
-        combined_data += "\n\n--- PALINSESTO GLOBALE ---\n" + "\n".join(global_matches[:80])
+        combined_data += "\n\n--- PALINSESTO GLOBALE ---\n" + "\n".join(global_matches[:60])
         
         return combined_data, None
     except Exception as e: return None, str(e)
@@ -124,24 +124,30 @@ def run_quant_engine(match_data: str, api_key: str) -> str:
         "Sei il 'Quant Engine Alpha', un'IA per l'analisi sportiva istituzionale. "
         "Il tuo compito è generare DUE distinte strategie basate rigorosamente sui dati forniti.\n\n"
         "REQUISITO TASSATIVO PER OGNI SINGOLO EVENTO:\n"
-        "Non devi mai limitarti a dire la quota o le squadre. Per OGNUNA delle 5 partite di entrambe le strategie devi indicare esplicitamente:\n"
+        "Per OGNUNA delle 5 partite di entrambe le strategie devi indicare esplicitamente:\n"
         "- **Match e Orario**\n"
         "- **Classe di Esito (Pronostico preciso):** (es. Segno 1, X2, Over 1.5, Under 3.5, Goal, Combo 1X + Under 3.5)\n"
         "- **Quota Ufficiale o Stimata:** [Valore]\n"
         "- **Ragionamento Matematico / Statistico:** (Breve motivazione basata su Poisson, ELO o asimmetria tecnica)\n\n"
         "STRUTTURA DELL'OUTPUT:\n"
         "1. **STRATEGIA 1: Schedina Global Daily 50€** (5 eventi dal palinsesto globale, target quota totale 10-15x).\n"
-        "2. **STRATEGIA 2: Specchietto Dedicato Elite (Italiane & Principali Europee / Coppe)** (Esattamente 5 eventi focalizzati su Serie A, Coppa Italia, coppe europee e top club. Se le quote non sono ancora caricate, stimale rigorosamente con i modelli di calcolo).\n\n"
+        "2. **STRATEGIA 2: Specchietto Dedicato Elite (Italiane & Principali Europee / Coppe)** (Esattamente 5 eventi focalizzati su Serie A, Coppa Italia, coppe europee e top club. Se le quote non sono caricate, stimale rigorosamente).\n\n"
         "Includi per entrambe le sezioni: la **Quota Totale Combinata**, il **Confidence Score (0-100%)** e il **Protocollo di Rischio** (Toro/Orso con puntata consigliata di 3€ o 5€)."
     )
-    user_prompt = f"Ecco i dati divisi per sezioni (Oggi e Domani):\n{match_data}\nGenera le due strategie con le classi di esito complete e dettagliate."
     
-    response = client.chat.completions.create(
-        model="llama-3.1-70b-versatile",
-        messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
-        temperature=0.1
-    )
-    return response.choices[0].message.content
+    # Sicurezza: tronchiamo i dati a 3500 caratteri per evitare errori di payload (BadRequest)
+    safe_match_data = match_data[:3500] if match_data else "Nessun dato disponibile."
+    user_prompt = f"Ecco i dati:\n{safe_match_data}\nGenera le due strategie con le classi di esito complete."
+    
+    try:
+        response = client.chat.completions.create(
+            model="llama3-70b-8192",
+            messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
+            temperature=0.1
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        return f"❌ Errore durante l'inferenza del Quant Engine: {str(e)}"
 
 # --- UI STREAMLIT ---
 st.title("⚙️ Bet-Pro | Quant Engine Alpha")
