@@ -19,7 +19,7 @@ HISTORY_FILE = "bet_history.csv"
 
 # --- LOGICA DI FETCHING INTELLIGENTE ---
 def fetch_fixtures_and_odds(api_key: str):
-    if not api_key: return None, "❌ Errore: API_FOOTBALL_KEY non configurata."
+    if not api_key: return None, "❌ Errore: API_FOOTBALL_KEY non configurata nei secrets."
     try:
         italy_tz = timezone(timedelta(hours=2))
         oggi_dt = datetime.now(italy_tz)
@@ -99,11 +99,14 @@ def send_weekly_report():
         return "Report inviato con successo."
     except Exception as e: return f"Errore invio: {e}"
 
-# --- MOTORE QUANTISTICO (CON FALLBACK AUTOMATICO) ---
+# --- MOTORE QUANTISTICO DIAGNOSTICO ---
 def run_quant_engine(match_data: str, api_key: str) -> str:
+    if not api_key:
+        return "❌ ERRORE: La tua GROQ_API_KEY è vuota nei secrets di Streamlit."
+    
     client = Groq(api_key=api_key.strip())
-    # Lista di modelli per evitare dismissioni improvvise
-    models_to_try = ["llama-3.3-70b-versatile", "llama-3.1-70b-versatile", "mixtral-8x7b-32768"]
+    # Proviamo i modelli più stabili e recenti di Groq
+    models = ["llama-3.3-70b-versatile", "llama-3.1-70b-versatile"]
     
     system_prompt = (
         "Sei il 'Quant Engine Alpha', IA per analisi sportiva istituzionale. "
@@ -113,18 +116,19 @@ def run_quant_engine(match_data: str, api_key: str) -> str:
     safe_match_data = match_data[:3500] if match_data else "Nessun dato."
     user_prompt = f"Ecco i dati:\n{safe_match_data}\nGenera due strategie con esiti completi."
 
-    for model_name in models_to_try:
+    for model in models:
         try:
             response = client.chat.completions.create(
-                model=model_name,
+                model=model,
                 messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
                 temperature=0.1
             )
             return response.choices[0].message.content
-        except Exception:
-            continue # Passa al prossimo modello se fallisce
+        except Exception as e:
+            # Continuiamo a provare il prossimo modello
+            continue
             
-    return "❌ Errore critico: Nessuno dei modelli AI è attualmente disponibile."
+    return f"❌ ERRORE CRITICO GROQ: Tutti i tentativi falliti. Ultimo errore: {str(e)}"
 
 # --- UI STREAMLIT ---
 st.title("⚙️ Bet-Pro | Quant Engine Alpha")
@@ -136,7 +140,7 @@ if st.button("🚀 Inizializza Motore Quantistico", type="primary"):
         else:
             result = run_quant_engine(data, GROQ_API_KEY)
             st.session_state["analysis_result"] = result
-            if "❌ Errore" not in result:
+            if "❌" not in result:
                 save_bet_to_history({"date": datetime.now(), "result": result})
 
 if st.session_state.get("analysis_result"):
