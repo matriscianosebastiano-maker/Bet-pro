@@ -17,13 +17,15 @@ EMAIL_USER = st.secrets.get("EMAIL_USER", "")
 EMAIL_PASS = st.secrets.get("EMAIL_PASS", "")
 HISTORY_FILE = "bet_history.csv"
 
-# --- LOGICA DI FETCHING INTELLIGENTE ---
+# --- LOGICA DI FETCHING ESPANSA (6 GIORNI) ---
 def fetch_fixtures_and_odds(api_key: str):
     if not api_key: return None, "❌ Errore: API_FOOTBALL_KEY non configurata nei secrets."
     try:
         italy_tz = timezone(timedelta(hours=2))
         oggi_dt = datetime.now(italy_tz)
-        dates_to_fetch = [oggi_dt.strftime("%Y-%m-%d"), (oggi_dt + timedelta(days=1)).strftime("%Y-%m-%d")]
+        
+        # Espandiamo la ricerca ai prossimi 6 giorni per catturare coppe, weekend e anticipi
+        dates_to_fetch = [(oggi_dt + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(6)]
         headers = {"x-rapidapi-host": "v3.football.api-sports.io", "x-rapidapi-key": api_key}
         
         all_fixtures = []
@@ -72,7 +74,7 @@ def fetch_fixtures_and_odds(api_key: str):
             if is_elite: elite_matches.append(match_line)
             else: global_matches.append(match_line)
             
-        combined_data = "--- PALINSESTO ELITE ---\n" + ("\n".join(elite_matches) if elite_matches else "Nessun match elite.") + "\n\n--- PALINSESTO GLOBALE ---\n" + "\n".join(global_matches[:40])
+        combined_data = "--- PALINSESTO ELITE (Italiane & Coppe) ---\n" + ("\n".join(elite_matches) if elite_matches else "Nessun match elite disponibile nei prossimi giorni.") + "\n\n--- PALINSESTO GLOBALE ---\n" + "\n".join(global_matches[:50])
         return combined_data, None
     except Exception as e: return None, str(e)
 
@@ -99,28 +101,54 @@ def send_weekly_report():
         return "Report inviato con successo."
     except Exception as e: return f"Errore invio: {e}"
 
-# --- MOTORE QUANTISTICO CON MODELLI AGGIORNATI ---
+# --- MOTORE QUANTISTICO ---
 def run_quant_engine(match_data: str, api_key: str) -> str:
     if not api_key:
         return "❌ ERRORE: La tua GROQ_API_KEY è vuota nei secrets di Streamlit."
     
     client = Groq(api_key=api_key.strip())
     
-    # Nuovi modelli di produzione attivi su Groq
     models_to_try = [
         "openai/gpt-oss-120b",
         "qwen/qwen3.6-27b",
         "openai/gpt-oss-20b"
     ]
     
-    system_prompt = (
-        "Sei il 'Quant Engine Alpha', IA per analisi sportiva istituzionale. "
-        "REQUISITO: Indipendentemente dal modello, fornisci SEMPRE per 5 eventi: Match, Classe Esito, Quota, Motivazione Statistica. "
-        "STRUTTURA: 1. Strategia Global Daily, 2. Strategia Elite. Concludi con Confidence Score e Protocollo di Rischio."
-    )
+    system_prompt = """Sei il 'Quant Engine Alpha', IA per analisi sportiva istituzionale.
+Devi generare esattamente DUE strategie seguendo RIGOROSAMENTE questo template formale ed esatto, senza alterare i nomi dei campi o la struttura:
+
+STRATEGIA 1: Schedina Global Daily 50€
+(REQUISITO: Assegna il 70% degli eventi al Calcio Globale e il restante 30% a uno specchietto dedicato ad Altri Sport come Tennis o Basket estratti o stimati dal palinsesto)
+
+Match e Orario: [DD/MM HH:MM]
+[Squadra/Atleta Casa] vs [Squadra/Atleta Ospite]
+Classe di Esito (Pronostico preciso): [1 / X / 2 / Over 2.5 / Under 2.5 / X2 / ecc.]
+Quota Ufficiale o Stimata: [0.00]
+Ragionamento Matematico / Statistico: [Testo esplicativo dettagliato basato su Poisson/ELO]
+
+*Quota Totale Combinata: [0.00]*
+*Confidence Score (0-100%): [00%]*
+*Protocollo di Rischio: [Nome Protocollo]*
+*(Puntata consigliata: [0]€)*
+
+
+STRATEGIA 2: Specchietto Dedicato Elite (Italiane & Principali Europee / Coppe)
+(REQUISITO: Utilizza ESCLUSIVAMENTE le partite del blocco Elite relative a Serie A, Serie B, Coppa Italia e Coppe Europee presenti nei dati forniti)
+
+Match e Orario: [DD/MM HH:MM]
+[Squadra Casa] vs [Squadra Ospite]
+Classe di Esito (Pronostico preciso): [Esito]
+Quota Ufficiale o Stimata: [0.00]
+Ragionamento Matematico / Statistico: [Testo esplicativo dettagliato]
+
+*Quota Totale Combinata: [0.00]*
+*Confidence Score (0-100%): [00%]*
+*Protocollo di Rischio: [Nome]*
+*(Puntata consigliata: [0]€)*
+"""
     
-    safe_match_data = match_data[:2500] if match_data else "Nessun dato."
-    user_prompt = f"Ecco i dati:\n{safe_match_data}\nGenera due strategie con esiti completi."
+    safe_match_data = match_data[:3000] if match_data else "Nessun dato."
+    user_prompt = f"Ecco i dati dei palinsesti (Elite e Globale):\n{safe_match_data}\nGenera le due strategie rispettando al millimetro il template e le proporzioni richieste."
 
     last_error = "Errore sconosciuto"
     for model in models_to_try:
