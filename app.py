@@ -3,97 +3,109 @@ import requests
 from datetime import datetime
 from groq import Groq
 
-st.set_page_config(page_title="Bet-Pro | Live Quant Analysis", page_icon="📊", layout="centered")
+st.set_page_config(page_title="Bet-Pro | Analisi Quantitativa Avanzata", page_icon="📈", layout="centered")
 
 GROQ_API_KEY = st.secrets.get("GROQ_API_KEY", "")
+API_FOOTBALL_KEY = st.secrets.get("API_FOOTBALL_KEY", "") # Aggiungi questa chiave nei secrets
 
 if "analysis_result" not in st.session_state:
     st.session_state["analysis_result"] = ""
 
+def fetch_global_fixtures(api_key: str):
+    """Recupera TUTTE le partite mondiali del giorno tramite API-Football e applica un filtro temporale assoluto."""
+    if not api_key:
+        return None, "❌ Errore: API_FOOTBALL_KEY non configurata nei secrets."
 
-def fetch_live_fixtures():
-    """Recupera le partite del giorno e filtra escludendo solo quelle terminate o cancellate,
-    mantenendo attive quelle in corso (live) e da disputare."""
     try:
         today_str = datetime.now().strftime("%Y-%m-%d")
-        url = f"https://www.thesportsdb.com/api/v1/json/3/eventsday.php?d={today_str}&s=Soccer"
+        url = "https://v3.football.api-sports.io/fixtures"
+        querystring = {"date": today_str}
         
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-            "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
+            "x-rapidapi-host": "v3.football.api-sports.io",
+            "x-rapidapi-key": api_key
         }
         
-        response = requests.get(url, headers=headers, timeout=15)
+        response = requests.get(url, headers=headers, params=querystring, timeout=15)
+        
         if response.status_code != 200:
-            return None, f"Errore di connessione API (HTTP {response.status_code})"
-        
+            return None, f"Errore API-Football (HTTP {response.status_code})"
+            
         data = response.json()
-        events = data.get("events", [])
+        matches = data.get("response", [])
         
-        if not events:
-            return None, "Nessuna partita trovata per la data odierna."
+        if not matches:
+            return None, "Nessuna partita in programma per oggi nel database mondiale."
             
         valid_matches = []
+        current_timestamp = int(datetime.now().timestamp())
         
-        for ev in events:
-            home = ev.get("strHomeTeam", "")
-            away = ev.get("strAwayTeam", "")
-            league = ev.get("strLeague", "")
-            time_str = ev.get("strTime", "")
-            status = ev.get("strStatus", "")
+        for match in matches:
+            fixture = match.get("fixture", {})
+            teams = match.get("teams", {})
+            league = match.get("league", {})
             
-            lower_status = status.lower()
+            match_timestamp = fixture.get("timestamp", 0)
+            status_short = fixture.get("status", {}).get("short", "")
             
-            # FILTRO CORRETTO: Scartiamo SOLO match finiti, posticipati o cancellati. 
-            # Le partite in corso (Live, 1H, 2H, HT) e quelle future vengono ora mantenute.
-            finished_terms = ['ft', 'finished', 'closed', 'postponed', 'cancelled', 'aet', 'pen']
-            if any(term in lower_status for term in finished_terms):
+            # FILTRO LOGICO TEMPORALE: 
+            # Scarta matematicamente qualsiasi match il cui orario d'inizio è nel passato,
+            # oppure che ha uno stato diverso da "Not Started" (NS) o "Time to be Defined" (TBD).
+            if match_timestamp <= current_timestamp or status_short not in ["NS", "TBD"]:
                 continue
-
-            if home and away:
-                status_label = f" [LIVE / In corso]" if any(l in lower_status for l in ['live', '1h', '2h', 'ht']) else f" [Ore {time_str[:5] if time_str else 'Da definire'}]"
-                valid_matches.append(f"{home} vs {away} ({league}){status_label}")
-
+                
+            home = teams.get("home", {}).get("name", "Sconosciuta")
+            away = teams.get("away", {}).get("name", "Sconosciuta")
+            league_name = league.get("name", "Competizione Sconosciuta")
+            country = league.get("country", "Mondo")
+            
+            # Formatta l'orario per il prompt
+            match_time = datetime.fromtimestamp(match_timestamp).strftime('%H:%M')
+            
+            valid_matches.append(f"[{match_time}] {home} vs {away} - {league_name} ({country})")
+            
         if not valid_matches:
-            return None, "Nessun match disponibile o in corso al momento."
-
-        return "\n".join(valid_matches), None
+            return None, "Tutte le partite del palinsesto odierno sono già iniziate o concluse."
+            
+        # Per evitare limiti di token sull'IA, limitiamo ai 100 match più imminenti
+        return "\n".join(valid_matches[:100]), None
 
     except Exception as e:
-        return None, str(e)
+        return None, f"Errore di sistema: {str(e)}"
 
-
-def run_ai_analysis(match_data: str, api_key: str) -> str:
-    """Elabora l'analisi quantitativa avanzata tramite Llama 3.3."""
+def run_advanced_ai_analysis(match_data: str, api_key: str) -> str:
+    """Elabora i pronostici applicando logica matematica e asimmetria motivazionale."""
     if not api_key:
-        return "❌ Errore: GROQ_API_KEY non presente nei Secrets di Streamlit."
+        return "❌ Errore: GROQ_API_KEY non presente."
 
     try:
         client = Groq(api_key=api_key.strip())
         
         system_prompt = (
-            "Sei un analista quantitativo e bookmaker professionista, specializzato in scommesse sportive. "
-            "REGINA ASSOLUTA DEI PRONOSTICI: non devi MAI usare etichette o categorie vuote (come 'Esito 1X2' o 'Under/Over'). "
-            "Devi indicare SEMPRE il pronostico concreto e specifico (es. Segno 1, Segno X, Segno 2, Gol, NoGol, Under 2.5, Over 2.5, ecc.)."
+            "Sei un analista quantitativo di livello senior e un algoritmo di betting predittivo. "
+            "Il tuo compito non è indovinare chi vince, ma calcolare le probabilità matematiche e identificare il valore atteso (EV). "
+            "REGOLE DI PENSIERO LOGICO COMPLESSO:\n"
+            "1. ASIMMETRIA MOTIVAZIONALE: Valuta criticamente la competizione. Se è una coppa nazionale, considera il rischio turnover. Le squadre minori o in lotta per la salvezza tendono a sacrificare le coppe a favore del campionato.\n"
+            "2. CONTESTO PSICOLOGICO E CALENDARIO: Ragiona sulle fatiche accumulate, sugli scontri diretti imminenti e sulla differenza di motivazioni tra le due squadre.\n"
+            "3. NIENTE BANALITÀ: Evita le etichette vuote. Devi fornire ESCLUSIVAMENTE pronostici concreti basati su una ratio rischio/rendimento.\n"
+            "4. SCARTA I MATCH FINITI: Analizza solo match futuri. Se per errore ricevi un match già in corso, ignoralo."
         )
         
-        user_prompt = f"""Ecco il palinsesto ufficiale validato per oggi (inclusi match in corso e futuri):
+        user_prompt = f"""Ecco il palinsesto mondiale completo dei match ANCORA DA GIOCARE oggi:
 -----------------
 {match_data}
 -----------------
 
-Istruzioni tassative:
-1. Per OGNI partita valida presente nell'elenco, genera una scheda tecnica strutturata rigorosamente in Markdown con questo formato esatto:
+Istruzioni Operative:
+Per OGNI partita, esegui il tuo ragionamento logico-matematico e genera la seguente scheda in Markdown:
 
-### [Squadra Casa] vs [Squadra Ospite] ([Competizione])
-* **Contesto Tattico & Formula:** (Analisi di forma e specificando se è campionato o coppa)
-* **Classi di Esito (Pronostici concreti):**
-  * **Conservativa (Basso Rischio):** [Es. 1X / X2 / DNB Casa / Under 3.5]
-  * **Principale (Medio Rischio):** [Es. Segno 1 / Segno 2 / Gol / Over 2.5]
-  * **Speculativa (Alto Rischio):** [Es. Combo Segno 1 + Over 1.5 / Multigol 2-4]
-* **Cluster Risultati Esatti Coerenti:** [3 risultati esatti maggiormente probabilistici]
-
-Mantieni un tono rigoroso, professionale e privo di etichette vuote."""
+### [Squadra Casa] vs [Squadra Ospite] ([Competizione, Nazione]) - Ore [Orario]
+* **Analisi Dinamica e Motivazionale:** (Spiega il tuo ragionamento logico: c'è rischio turnover? È una coppa minore? Chi ha più 'fame' di punti?)
+* **Classi di Esito (Pronostici Matematici):**
+  * **Copertura (Basso Rischio):** [Es. 1X e Under 3.5]
+  * **Value Bet (Medio Rischio):** [Il pronostico con il miglior rapporto probabilità/quota, es. Goal o Segno 2]
+  * **Speculativa (Alto Rischio):** [Es. Segno 1 + Over 2.5]
+* **Cluster Risultati Esatti:** [I 3 risultati più allineati al tuo ragionamento logico]"""
 
         response = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
@@ -101,37 +113,32 @@ Mantieni un tono rigoroso, professionale e privo di etichette vuote."""
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
-            temperature=0.1
+            temperature=0.2 # Leggermente alzato per permettere un ragionamento logico più flessibile
         )
         return response.choices[0].message.content
 
     except Exception as e:
-        return f"❌ Errore durante l'elaborazione con l'IA: {e}"
+        return f"❌ Errore IA: {e}"
 
+# ---------------- INTERFACCIA ----------------
 
-# ---------------- INTERFACCIA STREAMLIT ----------------
-
-st.title("📊 Bet-Pro | Live Quant Analysis")
-st.caption("Sincronizzazione via API con supporto per match live e in programma.")
-
+st.title("📈 Bet-Pro | Motore Logico Avanzato")
+st.caption("Palinsesto globale filtrato al secondo + Analisi su Asimmetria Motivazionale.")
 st.markdown("---")
 
-st.subheader("🎯 Gestione Palinsesto Live")
-st.write("Premi il pulsante per interrogare i server sportivi, includendo i match in corso e quelli da disputare.")
-
-if st.button("🚀 Sincronizza Palinsesto e Avvia Analisi", type="primary", use_container_width=True):
-    with st.spinner("Interrogazione feed sportivi in corso..."):
-        raw_data, err = fetch_live_fixtures()
+if st.button("🚀 Estrai Palinsesto Globale e Avvia Calcolo Logico", type="primary", use_container_width=True):
+    with st.spinner("Sincronizzazione col database mondiale in corso (filtro orario attivo)..."):
+        raw_data, err = fetch_global_fixtures(API_FOOTBALL_KEY)
         
         if err or not raw_data:
-            st.error(f"Impossibile completare la sincronizzazione: {err}")
+            st.error(err)
         else:
-            with st.spinner("L'IA sta elaborando l'analisi quantitativa dei match validi..."):
-                result = run_ai_analysis(raw_data, GROQ_API_KEY)
+            with st.spinner("Il motore quantitativo sta elaborando le asimmetrie motivazionali..."):
+                result = run_advanced_ai_analysis(raw_data, GROQ_API_KEY)
                 st.session_state["analysis_result"] = result
 
 if st.session_state["analysis_result"]:
     st.markdown("---")
-    st.subheader("📋 Risultati dell'Analisi Quantitativa")
+    st.subheader("📋 Output Analitico Quantitativo")
     st.markdown(st.session_state["analysis_result"])
     
