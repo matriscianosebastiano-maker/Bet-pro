@@ -72,7 +72,7 @@ def fetch_fixtures_and_odds(api_key: str):
             if is_elite: elite_matches.append(match_line)
             else: global_matches.append(match_line)
             
-        combined_data = "--- PALINSESTO ELITE ---\n" + ("\n".join(elite_matches) if elite_matches else "Nessun match elite.") + "\n\n--- PALINSESTO GLOBALE ---\n" + "\n".join(global_matches[:60])
+        combined_data = "--- PALINSESTO ELITE ---\n" + ("\n".join(elite_matches) if elite_matches else "Nessun match elite.") + "\n\n--- PALINSESTO GLOBALE ---\n" + "\n".join(global_matches[:40])
         return combined_data, None
     except Exception as e: return None, str(e)
 
@@ -99,56 +99,46 @@ def send_weekly_report():
         return "Report inviato con successo."
     except Exception as e: return f"Errore invio: {e}"
 
-# --- MOTORE QUANTISTICO CON FILTRAGGIO INTELLIGENTE DEI MODELLI ---
-def get_best_available_model(client) -> str:
-    """Interroga Groq filtrando esclusivamente i modelli di chat ed escludendo i classificatori o guardrail."""
-    try:
-        models = client.models.list()
-        valid_models = []
-        for m in models.data:
-            m_id = m.id.lower()
-            # Scarta rigorosamente modelli di sicurezza, classificazione o embedding
-            if any(term in m_id for term in ['guard', 'embed', 'whisper', 'audio', 'rerank', 'vision', 'classifier']):
-                continue
-            valid_models.append(m.id)
-            
-        # Priorità ai modelli 70b o versatili
-        for model_id in valid_models:
-            if "70b" in model_id and "versatile" in model_id:
-                return model_id
-        for model_id in valid_models:
-            if "llama" in model_id:
-                return model_id
-        if valid_models:
-            return valid_models[0]
-    except Exception:
-        pass
-    return "llama-3.3-70b-versatile"
-
+# --- MOTORE QUANTISTICO RESILIENTE CON FALLBACK MULTIPLO ---
 def run_quant_engine(match_data: str, api_key: str) -> str:
     if not api_key:
         return "❌ ERRORE: La tua GROQ_API_KEY è vuota nei secrets di Streamlit."
     
-    try:
-        client = Groq(api_key=api_key.strip())
-        selected_model = get_best_available_model(client)
-        
-        system_prompt = (
-            "Sei il 'Quant Engine Alpha', IA per analisi sportiva istituzionale. "
-            "REQUISITO: Indipendentemente dal modello, fornisci SEMPRE per 5 eventi: Match, Classe Esito, Quota, Motivazione Statistica."
-            "STRUTTURA: 1. Strategia Global Daily, 2. Strategia Elite. Concludi con Confidence Score e Protocollo di Rischio."
-        )
-        safe_match_data = match_data[:3500] if match_data else "Nessun dato."
-        user_prompt = f"Ecco i dati:\n{safe_match_data}\nGenera due strategie con esiti completi."
+    client = Groq(api_key=api_key.strip())
+    
+    # Sequenza di modelli stabili e ad alta capacità di carico su Groq
+    models_to_try = [
+        "llama-3.3-70b-versatile",
+        "llama-3.1-8b-instant"
+    ]
+    
+    system_prompt = (
+        "Sei il 'Quant Engine Alpha', IA per analisi sportiva istituzionale. "
+        "REQUISITO: Indipendentemente dal modello, fornisci SEMPRE per 5 eventi: Match, Classe Esito, Quota, Motivazione Statistica. "
+        "STRUTTURA: 1. Strategia Global Daily, 2. Strategia Elite. Concludi con Confidence Score e Protocollo di Rischio."
+    )
+    
+    # Taglio di sicurezza per evitare errori 413 (Request Entity Too Large)
+    safe_match_data = match_data[:2500] if match_data else "Nessun dato."
+    user_prompt = f"Ecco i dati:\n{safe_match_data}\nGenera due strategie con esiti completi."
 
-        response = client.chat.completions.create(
-            model=selected_model,
-            messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
-            temperature=0.1
-        )
-        return response.choices[0].message.content
-    except Exception as e:
-        return f"❌ ERRORE CRITICO GROQ: {str(e)}"
+    last_error = "Errore sconosciuto"
+    for model in models_to_try:
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_prompt}, 
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.1
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            last_error = str(e)
+            continue
+            
+    return f"❌ ERRORE CRITICO GROQ: Tutti i tentativi falliti. Ultimo errore: {last_error}"
 
 # --- UI STREAMLIT ---
 st.title("⚙️ Bet-Pro | Quant Engine Alpha")
