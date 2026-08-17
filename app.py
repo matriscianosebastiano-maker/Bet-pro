@@ -137,7 +137,7 @@ def run_quant_engine(match_data: str, api_key: str) -> str:
     user_prompt = f"Ecco i dati divisi per sezioni (Oggi e Domani):\n{match_data}\nGenera le due strategie con le classi di esito complete e dettagliate."
     
     response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
+        model="llama-3.1-70b-versatile",
         messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
         temperature=0.1
     )
@@ -165,4 +165,3 @@ if st.sidebar.button("📧 Invia Report Settimanale"):
 if os.path.exists(HISTORY_FILE):
     st.sidebar.subheader("📊 Storico Recente")
     st.sidebar.dataframe(pd.read_csv(HISTORY_FILE).tail(3))
-    
