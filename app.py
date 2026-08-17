@@ -99,36 +99,50 @@ def send_weekly_report():
         return "Report inviato con successo."
     except Exception as e: return f"Errore invio: {e}"
 
-# --- MOTORE QUANTISTICO CORRETTO ---
+# --- MOTORE QUANTISTICO CON SELEZIONE DINAMICA ---
+def get_best_available_model(client) -> str:
+    """Interroga dinamicamente Groq per trovare un modello valido ed eviterà blocchi da deprecazione."""
+    try:
+        models = client.models.list()
+        # Cerca prima un modello versatile da 70b
+        for m in models.data:
+            if "70b" in m.id and "versatile" in m.id:
+                return m.id
+        # Se non lo trova, prende il primo modello Llama disponibile
+        for m in models.data:
+            if "llama" in m.id:
+                return m.id
+        # Fallback estremo sul primo modello in lista
+        if models.data:
+            return models.data[0].id
+    except Exception:
+        pass
+    return "llama-3.3-70b-versatile" # Ancora di salvataggio statica
+
 def run_quant_engine(match_data: str, api_key: str) -> str:
     if not api_key:
         return "❌ ERRORE: La tua GROQ_API_KEY è vuota nei secrets di Streamlit."
     
-    client = Groq(api_key=api_key.strip())
-    models = ["llama-3.3-70b-versatile", "llama-3.1-70b-versatile"]
-    
-    system_prompt = (
-        "Sei il 'Quant Engine Alpha', IA per analisi sportiva istituzionale. "
-        "REQUISITO: Indipendentemente dal modello, fornisci SEMPRE per 5 eventi: Match, Classe Esito, Quota, Motivazione Statistica."
-        "STRUTTURA: 1. Strategia Global Daily, 2. Strategia Elite. Concludi con Confidence Score e Protocollo di Rischio."
-    )
-    safe_match_data = match_data[:3500] if match_data else "Nessun dato."
-    user_prompt = f"Ecco i dati:\n{safe_match_data}\nGenera due strategie con esiti completi."
+    try:
+        client = Groq(api_key=api_key.strip())
+        selected_model = get_best_available_model(client)
+        
+        system_prompt = (
+            "Sei il 'Quant Engine Alpha', IA per analisi sportiva istituzionale. "
+            "REQUISITO: Indipendentemente dal modello, fornisci SEMPRE per 5 eventi: Match, Classe Esito, Quota, Motivazione Statistica."
+            "STRUTTURA: 1. Strategia Global Daily, 2. Strategia Elite. Concludi con Confidence Score e Protocollo di Rischio."
+        )
+        safe_match_data = match_data[:3500] if match_data else "Nessun dato."
+        user_prompt = f"Ecco i dati:\n{safe_match_data}\nGenera due strategie con esiti completi."
 
-    last_error = "Errore sconosciuto"
-    for model in models:
-        try:
-            response = client.chat.completions.create(
-                model=model,
-                messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
-                temperature=0.1
-            )
-            return response.choices[0].message.content
-        except Exception as e:
-            last_error = str(e)
-            continue
-            
-    return f"❌ ERRORE CRITICO GROQ: Tutti i tentativi falliti. Ultimo errore: {last_error}"
+        response = client.chat.completions.create(
+            model=selected_model,
+            messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
+            temperature=0.1
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        return f"❌ ERRORE CRITICO GROQ: {str(e)}"
 
 # --- UI STREAMLIT ---
 st.title("⚙️ Bet-Pro | Quant Engine Alpha")
