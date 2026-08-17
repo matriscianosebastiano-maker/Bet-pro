@@ -17,49 +17,25 @@ EMAIL_USER = st.secrets.get("EMAIL_USER", "")
 EMAIL_PASS = st.secrets.get("EMAIL_PASS", "")
 HISTORY_FILE = "bet_history.csv"
 
-# --- LOGICA DI FETCHING CON API-FOOTBALL & FINESTRA 4 GIORNI ---
+# --- LOGICA DI FETCHING ROBUSTA (PROSSIME 20 PARTITE GLOBALI) ---
 def fetch_fixtures_and_odds(api_key: str):
     if not api_key: 
         return None, "❌ Errore: API_FOOTBALL_KEY non configurata nei Secrets."
     try:
         italy_tz = timezone(timedelta(hours=2))
-        oggi_dt = datetime.now(italy_tz)
-        
-        dates_to_fetch = [
-            (oggi_dt + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(4)
-        ]
-        
         headers = {"x-rapidapi-host": "v3.football.api-sports.io", "x-rapidapi-key": api_key.strip()}
-        all_fixtures = []
-        odds_dict = {}
         
-        for d_str in dates_to_fetch:
-            url_f = f"https://v3.football.api-sports.io/fixtures?date={d_str}"
-            url_o = f"https://v3.football.api-sports.io/odds?date={d_str}&bookmaker=8"
+        # Endpoint ottimizzato per prelevare sempre i prossimi match disponibili senza filtri di data rigidi
+        url_f = "https://v3.football.api-sports.io/fixtures?next=25"
+        
+        resp_f = requests.get(url_f, headers=headers, timeout=10)
+        if resp_f.status_code != 200:
+            return None, f"❌ Errore API (Status {resp_f.status_code}): {resp_f.text}"
             
-            try:
-                resp_f = requests.get(url_f, headers=headers, timeout=8)
-                if resp_f.status_code == 200:
-                    all_fixtures.extend(resp_f.json().get("response", []))
-            except Exception:
-                pass
-                
-            try:
-                resp_o = requests.get(url_o, headers=headers, timeout=8)
-                if resp_o.status_code == 200:
-                    odds_raw = resp_o.json().get("response", [])
-                    for o in odds_raw:
-                        f_id = o.get("fixture", {}).get("id")
-                        bets = o.get("bookmakers", [{}])[0].get("bets", [])
-                        winner = next((b for b in bets if b.get("id") == 1), None)
-                        if winner and len(winner.get("values", [])) >= 3:
-                            v = winner["values"]
-                            odds_dict[f_id] = f"1: {v[0]['odd']} | X: {v[1]['odd']} | 2: {v[2]['odd']}"
-            except Exception:
-                pass
-
+        all_fixtures = resp_f.json().get("response", [])
+        
         if not all_fixtures:
-            return None, "⚠️ Nessuna partita trovata nel palinsesto ufficiale per i prossimi giorni."
+            return None, "⚠️ Nessuna partita imminente trovata nel palinsesto."
 
         elite_matches = []
         global_matches = []
@@ -79,7 +55,22 @@ def fetch_fixtures_and_odds(api_key: str):
             country = m['league']['country']
             f_id = f['id']
             
-            odds_str = odds_dict.get(f_id, "Quote da stimare tramite modelli ELO/Poisson")
+            # Recupero quote associate se disponibili
+            odds_str = "Quote da stimare tramite modelli ELO/Poisson"
+            try:
+                url_o = f"https://v3.football.api-sports.io/odds?fixture={f_id}&bookmaker=8"
+                resp_o = requests.get(url_o, headers=headers, timeout=5)
+                if resp_o.status_code == 200:
+                    odds_raw = resp_o.json().get("response", [])
+                    if odds_raw:
+                        bets = odds_raw[0].get("bookmakers", [{}])[0].get("bets", [])
+                        winner = next((b for b in bets if b.get("id") == 1), None)
+                        if winner and len(winner.get("values", [])) >= 3:
+                            v = winner["values"]
+                            odds_str = f"1: {v[0]['odd']} | X: {v[1]['odd']} | 2: {v[2]['odd']}"
+            except Exception:
+                pass
+
             match_line = f"[{match_time_str}] {home} vs {away} | L: {league_name} ({country}) | Quote: {odds_str}"
             
             is_elite = any(kw in league_name.lower() for kw in elite_keywords) or country.lower() in ["italy", "england", "spain", "germany", "france", "europe"]
@@ -90,8 +81,8 @@ def fetch_fixtures_and_odds(api_key: str):
                 global_matches.append(match_line)
         
         combined_data = "--- PALINSESTO ELITE (ITALIA & EUROPA / COPPE) ---\n"
-        combined_data += "\n".join(elite_matches) if elite_matches else "Nessun match elite diretto trovato nel periodo."
-        combined_data += "\n\n--- PALINSESTO GLOBALE ---\n" + "\n".join(global_matches[:70])
+        combined_data += "\n".join(elite_matches) if elite_matches else "Nessun match elite immediato, utilizza la selezione globale."
+        combined_data += "\n\n--- PALINSESTO GLOBALE ---\n" + "\n".join(global_matches)
         
         return combined_data, None
     except Exception as e: 
@@ -131,8 +122,8 @@ def run_quant_engine(match_data: str, api_key: str) -> str:
         "Sei il 'Quant Engine Alpha', un'analisi sportiva istituzionale.\n"
         "REQUISITO FONDAMENTALE: Utilizza ESCLUSIVAMENTE i dati reali delle partite presenti nel palinsesto fornito. È severamente vietato inventare o simulare match.\n\n"
         "STRUTTURA RIGIDA DI OUTPUT:\n"
-        "1. **STRATEGIA 1: Schedina Global Daily 50€** (5 eventi basati sul palinsesto globale).\n"
-        "2. **STRATEGIA 2: Specchietto Dedicato Elite (Italiane & Principali Europee / Coppe)** (5 eventi focalizzati su Serie A, Coppe e Top Club).\n\n"
+        "1. **STRATEGIA 1: Schedina Global Daily 50€** (Eventi basati sul palinsesto globale).\n"
+        "2. **STRATEGIA 2: Specchietto Dedicato Elite (Italiane & Principali Europee / Coppe)** (Eventi focalizzati su Serie A, Coppe e Top Club).\n\n"
         "Per ogni partita indica: Match e Orario, Classe di Esito (Pronostico preciso), Quota Ufficiale o Stimata, e Ragionamento Matematico / Statistico basato su Poisson/ELO.\n"
         "Includi sempre Quota Totale Combinata, Confidence Score (0-100%) e Protocollo di Rischio (Toro/Orso con puntata consigliata)."
     )
