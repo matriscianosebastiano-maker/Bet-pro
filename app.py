@@ -99,17 +99,18 @@ def send_weekly_report():
         return "Report inviato con successo."
     except Exception as e: return f"Errore invio: {e}"
 
-# --- MOTORE QUANTISTICO RESILIENTE CON FALLBACK MULTIPLO ---
+# --- MOTORE QUANTISTICO CON MODELLI AGGIORNATI ---
 def run_quant_engine(match_data: str, api_key: str) -> str:
     if not api_key:
         return "❌ ERRORE: La tua GROQ_API_KEY è vuota nei secrets di Streamlit."
     
     client = Groq(api_key=api_key.strip())
     
-    # Sequenza di modelli stabili e ad alta capacità di carico su Groq
+    # Nuovi modelli di produzione attivi su Groq
     models_to_try = [
-        "llama-3.3-70b-versatile",
-        "llama-3.1-8b-instant"
+        "openai/gpt-oss-120b",
+        "qwen/qwen3.6-27b",
+        "openai/gpt-oss-20b"
     ]
     
     system_prompt = (
@@ -118,7 +119,6 @@ def run_quant_engine(match_data: str, api_key: str) -> str:
         "STRUTTURA: 1. Strategia Global Daily, 2. Strategia Elite. Concludi con Confidence Score e Protocollo di Rischio."
     )
     
-    # Taglio di sicurezza per evitare errori 413 (Request Entity Too Large)
     safe_match_data = match_data[:2500] if match_data else "Nessun dato."
     user_prompt = f"Ecco i dati:\n{safe_match_data}\nGenera due strategie con esiti completi."
 
