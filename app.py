@@ -17,14 +17,13 @@ EMAIL_USER = st.secrets.get("EMAIL_USER", "")
 EMAIL_PASS = st.secrets.get("EMAIL_PASS", "")
 HISTORY_FILE = "bet_history.csv"
 
-# --- LOGICA DI FETCHING (OGGI + DOMANI) ---
+# --- LOGICA DI FETCHING INTELLIGENTE (ELITE + GLOBALE) ---
 def fetch_fixtures_and_odds(api_key: str):
     if not api_key: return None, "❌ Errore: API_FOOTBALL_KEY non configurata."
     try:
         italy_tz = timezone(timedelta(hours=2))
         oggi_dt = datetime.now(italy_tz)
         
-        # Finestra estesa a oggi e domani per catturare coppe, turni infrasettimanali e Coppa Italia
         dates_to_fetch = [
             oggi_dt.strftime("%Y-%m-%d"),
             (oggi_dt + timedelta(days=1)).strftime("%Y-%m-%d")
@@ -55,24 +54,47 @@ def fetch_fixtures_and_odds(api_key: str):
                         v = winner["values"]
                         odds_dict[f_id] = f"1: {v[0]['odd']} | X: {v[1]['odd']} | 2: {v[2]['odd']}"
 
-        match_list = []
+        elite_matches = []
+        global_matches = []
+        
+        # Competizioni considerate Elite (Italia & Europa)
+        elite_keywords = ["serie a", "serie b", "coppa italia", "supercoppa", "champions league", "europa league", "conference league", "premier league", "la liga", "bundesliga", "ligue 1"]
+
         for m in all_fixtures:
             f = m['fixture']
-            match_timestamp = f.get('timestamp', 0)
-            if match_timestamp > 0:
-                match_dt_utc = datetime.fromtimestamp(match_timestamp, tz=timezone.utc)
-                match_dt_italy = match_dt_utc.astimezone(italy_tz)
-                match_time_str = match_dt_italy.strftime('%d/%m %H:%M')
-            else:
-                match_time_str = "Data N/D"
+            if f['status']['short'] not in ['NS', 'TBD']:
+                continue
                 
-            if f['status']['short'] in ['NS', 'TBD'] and f['id'] in odds_dict:
-                match_list.append(f"[{match_time_str}] {m['teams']['home']['name']} vs {m['teams']['away']['name']} | L: {m['league']['name']} | Paese: {m['league']['country']} | Quote: {odds_dict[f['id']]}")
-        
-        if not match_list:
-            return None, "Nessuna partita disponibile nel palinsesto di oggi e domani."
+            match_timestamp = f.get('timestamp', 0)
+            match_time_str = datetime.fromtimestamp(match_timestamp, tz=timezone.utc).astimezone(italy_tz).strftime('%d/%m %H:%M') if match_timestamp > 0 else "N/D"
             
-        return "\n".join(match_list[:120]), None
+            home = m['teams']['home']['name']
+            away = m['teams']['away']['name']
+            league_name = m['league']['name']
+            country = m['league']['country']
+            f_id = f['id']
+            
+            odds_str = odds_dict.get(f_id, "Quote in aggiornamento (Stima Quantistica ELO)")
+            match_line = f"[{match_time_str}] {home} vs {away} | L: {league_name} ({country}) | Quote: {odds_str}"
+            
+            # Controllo se è un match Elite (italiano o top europeo)
+            is_elite = any(kw in league_name.lower() for kw in elite_keywords) or country.lower() in ["italy", "england", "spain", "germany", "france", "europe"]
+            
+            if is_elite:
+                elite_matches.append(match_line)
+            else:
+                global_matches.append(match_line)
+        
+        # Formattiamo i dati da passare all'IA in modo strutturato
+        combined_data = "--- PALINSESTO ELITE (ITALIA & EUROPA / COPPE) ---\n"
+        if elite_matches:
+            combined_data += "\n".join(elite_matches)
+        else:
+            combined_data += "Nessun match elite diretto trovato nelle prossime 48h, includere club di massima fascia disponibili."
+            
+        combined_data += "\n\n--- PALINSESTO GLOBALE ---\n" + "\n".join(global_matches[:80])
+        
+        return combined_data, None
     except Exception as e: return None, str(e)
 
 # --- LOGICA DI BACKTESTING E REPORT ---
@@ -103,15 +125,15 @@ def run_quant_engine(match_data: str, api_key: str) -> str:
     client = Groq(api_key=api_key.strip())
     system_prompt = (
         "Sei il 'Quant Engine Alpha', un'IA per l'analisi sportiva istituzionale. "
-        "Devi generare DUE distinte strategie di gioco basate sul palinsesto (che include partite di oggi e di domani, inclusi turni di coppa e campionati):\n\n"
+        "Il tuo compito è generare DUE distinte strategie basate rigorosamente sui dati forniti:\n\n"
         "1. **STRATEGIA 1: Schedina Global Daily 50€**\n"
-        "- 5 eventi selezionati dall'intero palinsesto (oggi/domani) con il miglior rapporto probabilità/valore (quote medie 1.50-1.80, target quota totale 10-15x).\n\n"
-        "2. **STRATEGIA 2: Specchietto Dedicato Elite (Italiane & Principali Europee)**\n"
-        "- Una combinazione separata di esattamente 5 eventi focalizzata esclusivamente su squadre italiane (Serie A, Coppa Italia, coppe) e top club europei (Premier League, Liga, Bundesliga, Ligue 1) presenti nel palinsesto.\n"
-        "- NOTA: Includi questi eventi anche se l'algoritmo globale non li considera i primissimi assoluti in termini di value. Applica la stessa rigorosa logica statistica e di ragionamento per selezionare la combinazione più solida possibile per questo blocco.\n\n"
+        "- 5 eventi selezionati dall'intero palinsesto mondiale con il miglior rapporto probabilità/valore (quote medie 1.50-1.80, target quota totale 10-15x).\n\n"
+        "2. **STRATEGIA 2: Specchietto Dedicato Elite (Italiane & Principali Europee / Coppe)**\n"
+        "- Una combinazione separata di esattamente 5 eventi focalizzata esclusivamente su squadre italiane (Serie A, Coppa Italia, Supercoppa) e top club europei presenti nel blocco Elite dei dati.\n"
+        "- Anche se per alcune partite (es. preliminari di coppa) le quote ufficiali non sono ancora caricate e vedi 'Stima Quantistica', applica i modelli statistici (Poisson/ELO) per definire l'esito più logico e la quota stimata.\n\n"
         "Includi per entrambe le sezioni: i 5 match con scommessa consigliata, data/orario, quota stimata, quota totale della combinata, confidenza (0-100%) e protocollo di rischio (Toro/Orso con stake 3€ o 5€)."
     )
-    user_prompt = f"Analizza il palinsesto globale (oggi e domani) e genera le due strategie:\n{match_data}"
+    user_prompt = f"Ecco i dati divisi per sezioni (Oggi e Domani):\n{match_data}\nGenera le due strategie."
     
     response = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
@@ -124,7 +146,7 @@ def run_quant_engine(match_data: str, api_key: str) -> str:
 st.title("⚙️ Bet-Pro | Quant Engine Alpha")
 
 if st.button("🚀 Inizializza Motore Quantistico", type="primary"):
-    with st.spinner("Analisi Globale & Specchietto Elite (Oggi & Domani) in corso..."):
+    with st.spinner("Estrazione Palinsesto Elite & Globale (Oggi & Domani)..."):
         data, err = fetch_fixtures_and_odds(API_FOOTBALL_KEY)
         if err: st.error(err)
         else:
