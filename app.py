@@ -45,9 +45,9 @@ def fetch_fixtures_and_odds(api_key: str):
         for m in fixtures:
             f = m['fixture']
             if f['status']['short'] in ['NS', 'TBD'] and f['id'] in odds_dict:
-                match_list.append(f"{m['teams']['home']['name']} vs {m['teams']['away']['name']} | L: {m['league']['name']} | Quote: {odds_dict[f['id']]}")
+                match_list.append(f"{m['teams']['home']['name']} vs {m['teams']['away']['name']} | L: {m['league']['name']} | Paese: {m['league']['country']} | Quote: {odds_dict[f['id']]}")
         
-        return "\n".join(match_list[:70]), None
+        return "\n".join(match_list[:80]), None
     except Exception as e: return None, str(e)
 
 # --- LOGICA DI BACKTESTING E REPORT ---
@@ -78,14 +78,15 @@ def run_quant_engine(match_data: str, api_key: str) -> str:
     client = Groq(api_key=api_key.strip())
     system_prompt = (
         "Sei il 'Quant Engine Alpha', un'IA per l'analisi sportiva istituzionale. "
-        "IL TUO OBBLIGO: Fornire una schedina da 5 eventi ad alta probabilità.\n"
-        "STRUTTURA OBBLIGATORIA DEL REPORT:\n"
-        "1. ELITE FOCUS (Serie A, Coppa Italia, Premier, Liga, Bundesliga, Ligue 1): Analizza specificamente le squadre italiane e le top europee. Valuta la loro condizione in modo secco e tecnico.\n"
-        "2. SCHEDINA DAILY 50€: 5 eventi selezionati con quote medie 1.50-1.80 (Quota totale obiettivo 10-15x).\n"
-        "3. PROTOCOLLO RISCHIO: Valuta se il mercato è 'Toro' (punta 5€) o 'Orso' (punta 3€).\n"
-        "Sii sintetico, analitico e professionale."
+        "Devi generare DUE distinte strategie di gioco basate sul palinsesto:\n\n"
+        "1. **STRATEGIA 1: Schedina Global Daily 50€**\n"
+        "- 5 eventi selezionati dall'intero palinsesto mondiale con il miglior rapporto probabilità/valore (quote medie 1.50-1.80, target quota totale 10-15x).\n\n"
+        "2. **STRATEGIA 2: Specchietto Dedicato Elite (Italiane & Principali Europee)**\n"
+        "- Una combinazione separata di esattamente 5 eventi focalizzata esclusivamente su squadre italiane (Serie A, Coppa Italia, coppe europee) e top club europei (Premier League, Liga, Bundesliga, Ligue 1).\n"
+        "- NOTA: Includi questi eventi anche se l'algoritmo globale non li considera i primissimi assoluti in termini di value. Applica la stessa rigorosa logica statistica e di ragionamento per selezionare la combinazione più solida possibile per questo blocco.\n\n"
+        "Includi per entrambe le sezioni: i 5 match con scommessa consigliata, quota stimata, quota totale della combinata, confidenza (0-100%) e protocollo di rischio (Toro/Orso con stake 3€ o 5€)."
     )
-    user_prompt = f"Analizza il palinsesto globale e genera la Strategia:\n{match_data}"
+    user_prompt = f"Analizza il palinsesto globale e genera le due strategie:\n{match_data}"
     
     response = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
@@ -97,8 +98,8 @@ def run_quant_engine(match_data: str, api_key: str) -> str:
 # --- UI STREAMLIT ---
 st.title("⚙️ Bet-Pro | Quant Engine Alpha")
 
-if st.button("🚀 Inizializza Motore Quantistico"):
-    with st.spinner("Analisi Elite & Globale in corso..."):
+if st.button("🚀 Inizializza Motore Quantistico", type="primary"):
+    with st.spinner("Analisi Globale & Specchietto Elite in corso..."):
         data, err = fetch_fixtures_and_odds(API_FOOTBALL_KEY)
         if err: st.error(err)
         else:
