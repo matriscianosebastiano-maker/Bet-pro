@@ -12,74 +12,66 @@ st.set_page_config(page_title="Bet-Pro | Quant Engine Alpha", page_icon="⚙️"
 
 # --- CONFIGURAZIONE ---
 GROQ_API_KEY = st.secrets.get("GROQ_API_KEY", "")
-API_FOOTBALL_KEY = st.secrets.get("API_FOOTBALL_KEY", "")
+FOOTBALL_DATA_API_KEY = st.secrets.get("FOOTBALL_DATA_API_KEY", "") or st.secrets.get("API_FOOTBALL_KEY", "")
 EMAIL_USER = st.secrets.get("EMAIL_USER", "")
 EMAIL_PASS = st.secrets.get("EMAIL_PASS", "")
 HISTORY_FILE = "bet_history.csv"
 
-# --- LOGICA DI FETCHING SICURA (SOLO MATCH REALI PROSSIME 48H) ---
+# --- LOGICA DI FETCHING CON FOOTBALL-DATA.ORG V4 ---
 def fetch_fixtures_and_odds(api_key: str):
-    if not api_key: return None, "❌ Errore: API_FOOTBALL_KEY non configurata nei Secrets."
+    if not api_key: 
+        return None, "❌ Errore: Token API per football-data.org non configurato nei Secrets."
     try:
         italy_tz = timezone(timedelta(hours=2))
         oggi_dt = datetime.now(italy_tz)
         
-        dates_to_fetch = [
-            oggi_dt.strftime("%Y-%m-%d"),
-            (oggi_dt + timedelta(days=1)).strftime("%Y-%m-%d")
-        ]
+        date_from = oggi_dt.strftime("%Y-%m-%d")
+        date_to = (oggi_dt + timedelta(days=3)).strftime("%Y-%m-%d")
         
-        headers = {"x-rapidapi-host": "v3.football.api-sports.io", "x-rapidapi-key": api_key}
-        all_fixtures = []
-        odds_dict = {}
+        # Endpoint ufficiale football-data.org v4
+        url = f"https://api.football-data.org/v4/matches?dateFrom={date_from}&dateTo={date_to}"
+        headers = {"X-Auth-Token": api_key.strip()}
         
-        for d_str in dates_to_fetch:
-            url_f = f"https://v3.football.api-sports.io/fixtures?date={d_str}"
-            url_o = f"https://v3.football.api-sports.io/odds?date={d_str}&bookmaker=8"
+        resp = requests.get(url, headers=headers, timeout=10)
+        if resp.status_code != 200:
+            return None, f"❌ Errore API football-data.org (Status {resp.status_code}): {resp.text}"
             
-            try:
-                resp_f = requests.get(url_f, headers=headers, timeout=8)
-                if resp_f.status_code == 200:
-                    all_fixtures.extend(resp_f.json().get("response", []))
-            except Exception:
-                pass
-                
-            try:
-                resp_o = requests.get(url_o, headers=headers, timeout=8)
-                if resp_o.status_code == 200:
-                    odds_raw = resp_o.json().get("response", [])
-                    for o in odds_raw:
-                        f_id = o.get("fixture", {}).get("id")
-                        bets = o.get("bookmakers", [{}])[0].get("bets", [])
-                        winner = next((b for b in bets if b.get("id") == 1), None)
-                        if winner and len(winner.get("values", [])) >= 3:
-                            v = winner["values"]
-                            odds_dict[f_id] = f"1: {v[0]['odd']} | X: {v[1]['odd']} | 2: {v[2]['odd']}"
-            except Exception:
-                pass
-
-        if not all_fixtures:
-            return None, "⚠️ Nessuna partita trovata nel palinsesto ufficiale per le prossime 48 ore."
+        data = resp.json()
+        matches = data.get("matches", [])
+        
+        if not matches:
+            return None, "⚠️ Nessuna partita trovata nel palinsesto di football-data.org per i prossimi giorni."
 
         elite_matches = []
         global_matches = []
         elite_keywords = ["serie a", "serie b", "coppa italia", "supercoppa", "champions league", "europa league", "conference league", "premier league", "la liga", "bundesliga", "ligue 1"]
 
-        for m in all_fixtures:
-            f = m['fixture']
-            if f['status']['short'] not in ['NS', 'TBD']:
+        for m in matches:
+            status = m.get('status')
+            if status not in ['TIMED', 'SCHEDULED']:
                 continue
                 
-            match_timestamp = f.get('timestamp', 0)
-            match_time_str = datetime.fromtimestamp(match_timestamp, tz=timezone.utc).astimezone(italy_tz).strftime('%d/%m %H:%M') if match_timestamp > 0 else "N/D"
+            utc_date_str = m.get('utcDate', '')
+            match_time_str = "N/D"
+            if utc_date_str:
+                try:
+                    dt_utc = datetime.fromisoformat(utc_date_str.replace('Z', '+00:00'))
+                    match_time_str = dt_utc.astimezone(italy_tz).strftime('%d/%m %H:%M')
+                except Exception:
+                    pass
             
-            home = m['teams']['home']['name']
-            away = m['teams']['away']['name']
-            league_name = m['league']['name']
-            country = m['league']['country']
-            f_id = f['id']
+            home = m.get('homeTeam', {}).get('name', 'Sconosciuta')
+            away = m.get('awayTeam', {}).get('name', 'Sconosciuta')
+            competition = m.get('competition', {})
+            league_name = competition.get('name', 'Campionato')
+            country = competition.get('area', {}).get('name', 'Internazionale')
             
-            odds_str = odds_dict.get(f_id, "Quote da stimare tramite modelli ELO/Poisson")
+            odds_info = m.get('odds', {})
+            if odds_info and 'homeWin' in odds_info:
+                odds_str = f"1: {odds_info.get('homeWin')} | X: {odds_info.get('draw')} | 2: {odds_info.get('awayWin')}"
+            else:
+                odds_str = "Quote da stimare tramite modelli ELO/Poisson"
+                
             match_line = f"[{match_time_str}] {home} vs {away} | L: {league_name} ({country}) | Quote: {odds_str}"
             
             is_elite = any(kw in league_name.lower() for kw in elite_keywords) or country.lower() in ["italy", "england", "spain", "germany", "france", "europe"]
@@ -90,8 +82,8 @@ def fetch_fixtures_and_odds(api_key: str):
                 global_matches.append(match_line)
         
         combined_data = "--- PALINSESTO ELITE (ITALIA & EUROPA / COPPE) ---\n"
-        combined_data += "\n".join(elite_matches) if elite_matches else "Pochi o nessun match elite diretto nelle prossime 48h (USA I MIGLIORI MATCH GLOBALI)."
-        combined_data += "\n\n--- PALINSESTO GLOBALE ---\n" + "\n".join(global_matches[:60])
+        combined_data += "\n".join(elite_matches) if elite_matches else "Nessun match elite diretto trovato nel periodo."
+        combined_data += "\n\n--- PALINSESTO GLOBALE ---\n" + "\n".join(global_matches[:70])
         
         return combined_data, None
     except Exception as e: 
@@ -120,7 +112,7 @@ def send_weekly_report():
         return "Report inviato con successo."
     except Exception as e: return f"Errore invio: {e}"
 
-# --- MOTORE QUANTISTICO CON FALLBACK MODELLI E ISTRUZIONI ANTI-BLOCCO ---
+# --- MOTORE QUANTISTICO CON FALLBACK MODELLI ---
 def run_quant_engine(match_data: str, api_key: str) -> str:
     if not api_key:
         return "❌ ERRORE: GROQ_API_KEY non presente."
@@ -128,24 +120,17 @@ def run_quant_engine(match_data: str, api_key: str) -> str:
     client = Groq(api_key=api_key.strip())
     
     system_prompt = (
-        "Sei il 'Quant Engine Alpha', un'IA per l'analisi sportiva istituzionale.\n"
-        "Devi generare SEMPRE E TASSATIVAMENTE le due strategie richieste utilizzando i dati reali forniti.\n"
-        "ANCHE SE i match Elite presenti nel palinsesto sono meno di 5, NON rifiutare mai la generazione: completa la schedina usando i migliori match internazionali disponibili nel palinsesto fornito.\n\n"
-        "REQUISITO PER OGNI EVENTO:\n"
-        "Per ogni partita selezionata devi indicare:\n"
-        "- **Match e Orario**\n"
-        "- **Classe di Esito (Pronostico preciso):** (es. Segno 1, X2, Over 1.5, Under 3.5, Goal, Combo 1X + Under 3.5)\n"
-        "- **Quota Ufficiale o Stimata:** [Valore]\n"
-        "- **Ragionamento Matematico / Statistico:** (Motivazione sintetica basata su Poisson/ELO)\n\n"
+        "Sei il 'Quant Engine Alpha', un'analisi sportiva istituzionale.\n"
+        "REQUISITO FONDAMENTALE: Utilizza ESCLUSIVAMENTE i dati reali delle partite presenti nel palinsesto fornito. È severamente vietato inventare o simulare match.\n\n"
         "STRUTTURA RIGIDA DI OUTPUT:\n"
-        "1. **STRATEGIA 1: Schedina Global Daily 50€** (5 eventi dal palinsesto globale, target quota totale 10-15x).\n"
-        "2. **STRATEGIA 2: Specchietto Dedicato Elite (Italiane & Principali Europee / Coppe)** (5 eventi focalizzati su Serie A, Coppe e Top Club. Se le quote mancano, stimali matematicamente).\n\n"
-        "Includi sempre alla fine di ciascuna strategia: Quota Totale Combinata, Confidence Score (0-100%) e Protocollo di Rischio (Toro/Orso con puntata consigliata)."
+        "1. **STRATEGIA 1: Schedina Global Daily 50€** (5 eventi basati sul palinsesto globale).\n"
+        "2. **STRATEGIA 2: Specchietto Dedicato Elite (Italiane & Principali Europee / Coppe)** (5 eventi focalizzati su Serie A, Coppe e Top Club).\n\n"
+        "Per ogni partita indica: Match e Orario, Classe di Esito (Pronostico preciso), Quota Ufficiale o Stimata, e Ragionamento Matematico / Statistico basato su Poisson/ELO.\n"
+        "Includi sempre Quota Totale Combinata, Confidence Score (0-100%) e Protocollo di Rischio (Toro/Orso con puntata consigliata)."
     )
     
-    user_prompt = f"Ecco i dati reali (Oggi e Domani):\n{match_data}\nGenera le due strategie senza mai rifiutare la risposta."
+    user_prompt = f"Ecco i dati reali estratti:\n{match_data}\nGenera le due strategie basandoti unicamente su questi incontri reali."
     
-    # Fallback tra modelli Groq in caso di rate limit o errori di server
     models = ["llama-3.3-70b-versatile", "qwen-2.5-32b", "llama3-70b-8192"]
     
     for model_name in models:
@@ -165,8 +150,8 @@ def run_quant_engine(match_data: str, api_key: str) -> str:
 st.title("⚙️ Bet-Pro | Quant Engine Alpha")
 
 if st.button("🚀 Inizializza Motore Quantistico", type="primary"):
-    with st.spinner("Estrazione Palinsesto Reale (Oggi & Domani)..."):
-        data, err = fetch_fixtures_and_odds(API_FOOTBALL_KEY)
+    with st.spinner("Estrazione Palinsesto da football-data.org in corso..."):
+        data, err = fetch_fixtures_and_odds(FOOTBALL_DATA_API_KEY)
         if err: 
             st.error(err)
         else:
