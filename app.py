@@ -99,25 +99,31 @@ def send_weekly_report():
         return "Report inviato con successo."
     except Exception as e: return f"Errore invio: {e}"
 
-# --- MOTORE QUANTISTICO CON SELEZIONE DINAMICA ---
+# --- MOTORE QUANTISTICO CON FILTRAGGIO INTELLIGENTE DEI MODELLI ---
 def get_best_available_model(client) -> str:
-    """Interroga dinamicamente Groq per trovare un modello valido ed eviterà blocchi da deprecazione."""
+    """Interroga Groq filtrando esclusivamente i modelli di chat ed escludendo i classificatori o guardrail."""
     try:
         models = client.models.list()
-        # Cerca prima un modello versatile da 70b
+        valid_models = []
         for m in models.data:
-            if "70b" in m.id and "versatile" in m.id:
-                return m.id
-        # Se non lo trova, prende il primo modello Llama disponibile
-        for m in models.data:
-            if "llama" in m.id:
-                return m.id
-        # Fallback estremo sul primo modello in lista
-        if models.data:
-            return models.data[0].id
+            m_id = m.id.lower()
+            # Scarta rigorosamente modelli di sicurezza, classificazione o embedding
+            if any(term in m_id for term in ['guard', 'embed', 'whisper', 'audio', 'rerank', 'vision', 'classifier']):
+                continue
+            valid_models.append(m.id)
+            
+        # Priorità ai modelli 70b o versatili
+        for model_id in valid_models:
+            if "70b" in model_id and "versatile" in model_id:
+                return model_id
+        for model_id in valid_models:
+            if "llama" in model_id:
+                return model_id
+        if valid_models:
+            return valid_models[0]
     except Exception:
         pass
-    return "llama-3.3-70b-versatile" # Ancora di salvataggio statica
+    return "llama-3.3-70b-versatile"
 
 def run_quant_engine(match_data: str, api_key: str) -> str:
     if not api_key:
