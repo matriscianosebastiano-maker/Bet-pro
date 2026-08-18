@@ -1,36 +1,85 @@
-name: Run Betting Engine
+name: Controllo codice
+
+# GitHub Actions NON fa girare l'app Streamlit: esegue job che finiscono.
+# Un server web che deve restare in ascolto non ha senso qui.
+# Questo workflow fa l'unica cosa utile: verificare che il codice sia
+# valido e importabile PRIMA che tu vada a deployare su Streamlit Cloud.
 
 on:
-  schedule:
-    - cron: '0 */6 * * *' # Esegue lo script ogni 6 ore in automatico
-  workflow_dispatch: # Ti permette di avviarlo manualmente quando vuoi dalla scheda Actions
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:        # permette l'avvio manuale dalla tab Actions
 
 jobs:
-  build:
+  verifica:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: "3.11"
+          cache: pip
 
-      - name: Install dependencies
+      - name: Installa dipendenze
         run: |
-          pip install requests
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
-      - name: Run Python Engine
+      - name: Verifica sintassi
+        run: python -m py_compile app.py
+
+      - name: Verifica che l'app sia importabile
         env:
-          THE_ODDS_API_KEY: ${{ secrets.THE_ODDS_API_KEY }}
+          BETPRO_CACHE: /tmp/betpro_cache
         run: |
-          python main.py
+          python - <<'PY'
+          import importlib.util, sys, types
 
-      - name: Commit and push results.json
-        run: |
-          git config --global user.name 'github-actions[bot]'
-          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git add results.json
-          git commit -m "Aggiornamento automatico quote results.json" || exit 0
-          git push
+          # Streamlit finto: l'import del modulo non deve aprire un server,
+          # serve solo a far esplodere eventuali errori a livello di modulo.
+          class Fake:
+              def __init__(self, *a, **k): pass
+              def __getattr__(self, n): return Fake()
+              def __call__(self, *a, **k): return Fake()
+              def __enter__(self): return Fake()
+              def __exit__(self, *a): return False
+              def setdefault(self, *a, **k): return None
+              def get(self, *a, **k): return a[1] if len(a) > 1 else ""
+              def date_input(self, *a, **k):
+                  import datetime; return datetime.date(2026, 1, 1)
+              def slider(self, *a, **k): return a[3] if len(a) > 3 else 1
+              def button(self, *a, **k): return False
+              def checkbox(self, *a, **k): return True
+              def columns(self, n, *a, **k):
+                  return [Fake() for _ in range(n if isinstance(n, int) else len(n))]
+              def tabs(self, labels): return [Fake() for _ in labels]
+              def stop(self): raise SystemExit
+
+          st = Fake(); st.session_state = Fake(); st.secrets = Fake()
+          sys.modules["streamlit"] = st
+
+          spec = importlib.util.spec_from_file_location("app", "app.py")
+          mod = importlib.util.module_from_spec(spec)
+          sys.modules["app"] = mod
+          try:
+              spec.loader.exec_module(mod)
+          except SystemExit:
+              pass   # st.stop() e' un'uscita attesa senza chiavi API
+
+          # controlli minimi sul motore
+          assert hasattr(mod, "fit_dixon_coles"), "modello mancante"
+          assert hasattr(mod, "all_markets"), "generatore mercati mancante"
+          assert hasattr(mod, "evaluate_fixture"), "motore di valore mancante"
+
+          mk = mod.all_markets(mod.score_matrix(1.7, 1.1, -0.03))
+          assert len(mk) > 200, f"solo {len(mk)} mercati generati"
+          s = sum(mk[f"1X2:{k}"][0] for k in "1X2")
+          assert abs(s - 1.0) < 1e-6, f"1X2 non somma a 1: {s}"
+          assert mod.parse_outcome("Goals Over/Under", "Over 2.5") == "OU:O2.5"
+
+          print(f"OK — {len(mk)} mercati, 1X2 somma {s:.6f}")
+          PY
+          
