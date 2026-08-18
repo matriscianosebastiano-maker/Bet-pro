@@ -1,5 +1,6 @@
 streamlit>=1.36
 requests>=2.31
+pandas>=2.1.0
 numpy>=1.26
 scipy>=1.11
 pdfplumber>=0.10.0
